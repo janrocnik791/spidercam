@@ -1,0 +1,18 @@
+# SpiderCam Pi – Python dependencies
+# Install with: pip install -r requirements.txt
+
+flask>=3.0
+flask-socketio>=5.3
+requests>=2.31
+
+# Thermal camera
+adafruit-circuitpython-mlx90640   # MLX90640 via I²C
+# opencv-python                   # FLIR One Pro frame capture (add when camera arrives)
+
+# Image processing & detection
+numpy>=1.26
+opencv-python-headless>=4.9       # cv2 without GUI (headless Pi)
+scipy>=1.12                        # Optional: used if Gaussian filter via scipy preferred
+
+# Utilities
+python-dotenv>=1.0                 # Load .env for local dev overrides

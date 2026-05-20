@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpiderCam</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────────── -->
+  <header>
+    <h1>SpiderCam Inspection</h1>
+    <span id="connection-status" class="status-dot offline">ESP32 offline</span>
+  </header>
+
+  <main>
+
+    <!-- ── Camera feed ─────────────────────────────────────────────── -->
+    <section id="camera-panel">
+      <h2>Live Thermal Feed</h2>
+      <!--
+        Claude Code: set src to "/api/camera/frame" and refresh every 250ms.
+        Display min/max temp overlay from /api/camera/frame.json.
+      -->
+      <img id="thermal-feed" src="/api/camera/stream" alt="Thermal feed loading..." />
+      <div id="temp-range">
+        <span id="temp-min">--°C</span>
+        <span id="temp-max">--°C</span>
+      </div>
+    </section>
+
+    <!-- ── Manual controls ─────────────────────────────────────────── -->
+    <section id="controls-panel">
+      <h2>Manual Control</h2>
+      <!--
+        D-pad layout: Forward on top, Back on bottom, Left/Right on sides.
+        Each button POSTs to /api/move with the appropriate direction.
+        Hold-to-move: mousedown fires POST, mouseup fires POST /api/stop.
+        Claude Code: implement in controls.js
+      -->
+      <div class="dpad">
+        <button class="dpad-btn" data-direction="forward">▲</button>
+        <div class="dpad-row">
+          <button class="dpad-btn" data-direction="left">◄</button>
+          <button class="dpad-btn stop-btn" id="stop-btn">■</button>
+          <button class="dpad-btn" data-direction="right">►</button>
+        </div>
+        <button class="dpad-btn" data-direction="backward">▼</button>
+      </div>
+    </section>
+
+    <!-- ── Inspection ───────────────────────────────────────────────── -->
+    <section id="inspection-panel">
+      <h2>Inspection Pass</h2>
+      <button id="start-inspection-btn">▶ Start Inspection</button>
+      <button id="stop-inspection-btn" disabled>■ Stop</button>
+      <div id="inspection-status">Idle</div>
+      <div id="frames-count">Frames captured: 0</div>
+    </section>
+
+    <!-- ── Results ─────────────────────────────────────────────────── -->
+    <section id="results-panel">
+      <h2>Leak Alerts</h2>
+      <!--
+        Claude Code: results.js polls /api/results/latest after an inspection
+        completes (triggered by SocketIO "inspection_done" event).
+        Renders each LeakAlert as a card with: coordinate, max delta, diff heatmap.
+      -->
+      <div id="alerts-container">
+        <p class="no-alerts">No alerts — run an inspection pass.</p>
+      </div>
+      <button id="confirm-baseline-btn" style="display:none">
+        ✓ Confirm as new baseline
+      </button>
+    </section>
+
+  </main>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/js/controls.js"></script>
+  <script src="/js/camera.js"></script>
+  <script src="/js/results.js"></script>
+
+</body>
+</html>
