@@ -4,6 +4,11 @@
 // (Coverage + Live inspection details) → history strip. Manual control is
 // a floating action button in the feed; opening it slides a drawer up over
 // the bottom of the feed and shows an "Autonomous paused" banner.
+//
+// Live data: all hardware/scan/detection values come from the Pi backend over
+// SocketIO + MJPEG. The root V6Argus owns a SocketIO connection and publishes
+// the live state through ArgusCtx; leaf components read it via useArgus().
+// Layout and component structure are unchanged — only the data sources are.
 
 // ─── Brand tokens ────────────────────────────────────────────────────
 const OMV_NAVY = '#06275c';       // brand primary
@@ -29,8 +34,16 @@ const v6 = {
   brand: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', letterSpacing: 6, fontWeight: 500 },
 };
 
-// Shared data (from v6-data.jsx)
-const { DETECTIONS, PRIORITY, STATUS } = window;
+// Shared metadata (from v6-data.jsx). DETECTIONS is now empty — live records
+// arrive over SocketIO and live in the root component's state.
+const { PRIORITY, STATUS } = window;
+
+// ─── Live data context ───────────────────────────────────────────────
+// The root publishes everything the UI needs here; leaves consume it.
+const ArgusCtx = React.createContext(null);
+const useArgus = () => React.useContext(ArgusCtx) || {};
+
+const pad4 = (n) => String(Math.round(Number(n) || 0)).padStart(4, '0');
 
 // Hold-to-jog hook (local to V6 to avoid scope collisions with V4)
 function useV6Jog() {
@@ -80,12 +93,17 @@ function ArgusLogo({ size = 24, color = '#fff', bg = v6.surface }) {
 
 // ─── Header ──────────────────────────────────────────────────────────
 function V6Header() {
+  const { status, clock, onEstop, estopped } = useArgus();
   const statuses = [
-    { key: 'esp32', label: 'ESP32 Motor Controller', detail: '192.168.4.1 · -52 dBm', state: 'ok' },
-    { key: 'pi', label: 'Raspberry Pi', detail: '29.7 fps stream · -42 dBm', state: 'ok' },
-    { key: 'motors', label: 'Motors', detail: '4 cables · 0.42 A', state: 'ok' },
-    { key: 'ir', label: 'IR Sensor', detail: 'Calibrating · 24.0°C ambient', state: 'warn' },
-  ];
+    { key: 'esp32', label: 'ESP32 Motor Controller', sub: status?.esp32 },
+    { key: 'pi', label: 'Raspberry Pi', sub: status?.pi },
+    { key: 'motors', label: 'Motors', sub: status?.motors },
+    { key: 'ir', label: 'IR Sensor', sub: status?.ir_sensor },
+  ].map(s => ({
+    ...s,
+    detail: s.sub?.detail || '—',
+    state: s.sub?.state || 'warn',
+  }));
   const [hovered, setHovered] = React.useState(null);
   return (
     <div style={{
@@ -110,7 +128,7 @@ function V6Header() {
         <span style={{ color: v6.faint }}>·</span>
         <span><span style={{ color: v6.faint, marginRight: 6 }}>SESSION</span><span style={{ color: v6.text }}>47</span></span>
         <span style={{ color: v6.faint }}>·</span>
-        <span style={{ color: v6.text }}>14:22:08 UTC</span>
+        <span style={{ color: v6.text }}>{clock || '--:--:--'} UTC</span>
       </div>
 
       {/* Status icons */}
@@ -141,21 +159,33 @@ function V6Header() {
         })}
       </div>
 
-      {/* E-stop, hangs past the bar */}
-      <button style={{
+      {/* E-stop, hangs past the bar. Toggles: engage when running, release
+          (→ PAUSED) when already e-stopped. When engaged it pulses + flips to a
+          green "RELEASE" affordance so the operator can recover. */}
+      <button onClick={onEstop} style={{
         width: 148, height: 80,
-        background: 'linear-gradient(180deg, #c91a1a 0%, #8a0d0d 100%)',
+        background: estopped
+          ? 'linear-gradient(180deg, #1a6a2a 0%, #0d3a18 100%)'
+          : 'linear-gradient(180deg, #c91a1a 0%, #8a0d0d 100%)',
         color: '#fff', border: 'none',
         borderLeft: `1px solid ${v6.hair}`,
         cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-        boxShadow: 'inset 0 -3px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 16px rgba(201,26,26,0.25)',
+        boxShadow: estopped
+          ? 'inset 0 -3px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 16px rgba(91,186,111,0.35)'
+          : 'inset 0 -3px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 16px rgba(201,26,26,0.25)',
         zIndex: 30,
       }}>
-        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #ff5a5a, #8a0d0d 70%)', border: '2px solid #fff', boxShadow: '0 0 0 2.5px rgba(201,26,26,0.6)' }} />
+        <div style={{ width: 30, height: 30, borderRadius: '50%',
+          background: estopped
+            ? 'radial-gradient(circle at 35% 30%, #7ed98e, #0d3a18 70%)'
+            : 'radial-gradient(circle at 35% 30%, #ff5a5a, #8a0d0d 70%)',
+          border: '2px solid #fff',
+          boxShadow: estopped ? '0 0 0 2.5px rgba(91,186,111,0.6)' : '0 0 0 2.5px rgba(201,26,26,0.6)',
+          animation: estopped ? 'pulse 1s infinite' : 'none' }} />
         <div style={{ textAlign: 'left' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: 2 }}>E-STOP</div>
-          <div style={{ ...v6.mono, fontSize: 8.5, opacity: 0.75, letterSpacing: 1.2 }}>HOLD TO ABORT</div>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: 2 }}>{estopped ? 'RELEASE' : 'E-STOP'}</div>
+          <div style={{ ...v6.mono, fontSize: 8.5, opacity: 0.75, letterSpacing: 1.2 }}>{estopped ? 'E-STOPPED · TAP' : 'HOLD TO ABORT'}</div>
         </div>
       </button>
     </div>
@@ -164,6 +194,10 @@ function V6Header() {
 
 // ─── Coverage block in right rail ────────────────────────────────────
 function V6CoverageBlock({ onAnomalyHover, anomalies, hoverAnomaly }) {
+  const { scan, detections } = useArgus();
+  const progress = scan?.progress ?? 0;
+  const flagged = (detections || []).length;
+  const etaStr = fmtMMSS(scan?.eta_seconds);
   return (
     <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${v6.hair}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -173,7 +207,7 @@ function V6CoverageBlock({ onAnomalyHover, anomalies, hoverAnomaly }) {
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
         {/* Square map on the left */}
         <div style={{ width: 158, flex: '0 0 158px', aspectRatio: '1 / 1', background: v6.inset, position: 'relative' }}>
-          <V6SweptCoverage progress={0.42} anomalies={anomalies} onAnomalyHover={onAnomalyHover} />
+          <V6SweptCoverage progress={progress} anomalies={anomalies} onAnomalyHover={onAnomalyHover} />
           {hoverAnomaly && (
             <div style={{
               position: 'absolute',
@@ -197,9 +231,9 @@ function V6CoverageBlock({ onAnomalyHover, anomalies, hoverAnomaly }) {
         {/* Vertically-stacked stats on the right */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '2px 0' }}>
           {[
-            ['SWEPT', '42%', v6.text],
-            ['FLAGGED', '02', '#ff7070'],
-            ['ETA', '05:51', v6.text],
+            ['SWEPT', `${Math.round(progress * 100)}%`, v6.text],
+            ['FLAGGED', String(flagged).padStart(2, '0'), flagged ? '#ff7070' : v6.text],
+            ['ETA', etaStr, v6.text],
           ].map(([k, v, c]) => (
             <div key={k}>
               <div style={{ ...v6.mono, fontSize: 8.5, color: v6.faint, letterSpacing: 1.8 }}>{k}</div>
@@ -264,30 +298,46 @@ function V6SweptCoverage({ progress = 0.42, anomalies = [], onAnomalyHover, w = 
   );
 }
 
+// MM:SS formatter for elapsed / eta seconds
+function fmtMMSS(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
 // ─── Live inspection details panel ────────────────────────────────────
-function V6InspectionDetails({ running, onPauseResume }) {
-  const progress = 0.42;
+function V6InspectionDetails({ running, onPauseResume, onStop, onOpenDetail }) {
+  const { scan, position, detections } = useArgus();
+  const progress = scan?.progress ?? 0;
+  const estopped = scan?.mode === 'estop';
+  const pillColor = estopped ? v6.danger : running ? v6.ok : v6.warn;
+  const pillLabel = estopped ? 'E-STOPPED' : running ? 'AUTONOMOUS' : 'PAUSED';
+  const recent = (detections || [])
+    .filter(d => d.priority === 'critical' || d.priority === 'high')
+    .slice(0, 2);
+  const anomCount = (detections || [])
+    .filter(d => d.status === 'new' || d.status === 'acknowledged').length;
   return (
     <div style={{ flex: 1, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span style={{ ...v6.mono, fontSize: 9.5, letterSpacing: 2.5, color: v6.mute, textTransform: 'uppercase' }}>Inspection</span>
         <span style={{
           ...v6.mono, fontSize: 9.5, letterSpacing: 1.5,
-          color: running ? v6.ok : v6.warn,
+          color: pillColor,
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: running ? v6.ok : v6.warn, boxShadow: `0 0 8px ${running ? v6.ok : v6.warn}` }} />
-          {running ? 'AUTONOMOUS' : 'PAUSED'}
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: pillColor, boxShadow: `0 0 8px ${pillColor}` }} />
+          {pillLabel}
         </span>
       </div>
 
       {/* Title + status (A1 voice) */}
       <div>
         <div style={{ fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', fontSize: 17, color: '#fff', lineHeight: 1.15, fontWeight: 500, letterSpacing: 0.6 }}>
-          {running ? 'SCAN ACTIVE' : 'STANDING BY'}
+          {estopped ? 'E-STOPPED' : running ? 'SCAN ACTIVE' : 'STANDING BY'}
         </div>
         <div style={{ ...v6.mono, fontSize: 9.5, color: v6.mute, marginTop: 6, letterSpacing: 1 }}>
-          PASS 04 OF 12 &nbsp;·&nbsp; CELL 40 OF 96
+          PASS {String(scan?.current_pass ?? 0).padStart(2, '0')} OF {String(scan?.total_passes ?? 0).padStart(2, '0')} &nbsp;·&nbsp; CELL {scan?.current_cell ?? 0} OF {scan?.total_cells ?? 0}
         </div>
       </div>
 
@@ -298,8 +348,8 @@ function V6InspectionDetails({ running, onPauseResume }) {
           <span style={{ ...v6.mono, fontSize: 13, color: v6.mute }}>%</span>
           <div style={{ flex: 1 }} />
           <div style={{ ...v6.mono, fontSize: 9, color: v6.faint, letterSpacing: 1.2, textAlign: 'right' }}>
-            <div>ELAPSED <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>04:18</span></div>
-            <div style={{ marginTop: 3 }}>ETA <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>05:51</span></div>
+            <div>ELAPSED <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{fmtMMSS(scan?.elapsed_seconds)}</span></div>
+            <div style={{ marginTop: 3 }}>ETA <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{fmtMMSS(scan?.eta_seconds)}</span></div>
           </div>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', marginTop: 8, overflow: 'hidden' }}>
@@ -310,10 +360,10 @@ function V6InspectionDetails({ running, onPauseResume }) {
       {/* Live readouts — single 4-col row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderTop: `1px solid ${v6.hair}`, borderBottom: `1px solid ${v6.hair}` }}>
         {[
-          ['X', '0638', 'mm'],
-          ['Y', '0472', 'mm'],
-          ['Z', '1280', 'mm'],
-          ['ANOM', '02', ''],
+          ['X', pad4(position?.x), 'mm'],
+          ['Y', pad4(position?.y), 'mm'],
+          ['Z', pad4(position?.z), 'mm'],
+          ['ANOM', String(anomCount).padStart(2, '0'), ''],
         ].map(([k, val, unit], i) => (
           <div key={k} style={{
             padding: '8px 6px',
@@ -331,11 +381,11 @@ function V6InspectionDetails({ running, onPauseResume }) {
       {/* Recent anomalies list */}
       <div>
         <div style={{ ...v6.mono, fontSize: 9, letterSpacing: 1.5, color: v6.faint, marginBottom: 6, textTransform: 'uppercase' }}>Recent anomalies</div>
-        {[
-          { id: 'A1', pass: '012', temp: '64.2°C', time: '14:18', coords: 'X 638 Y 472' },
-          { id: 'A2', pass: '009', temp: '38.4°C', time: '14:00', coords: 'X 358 Y 198' },
-        ].map(a => (
-          <div key={a.id} style={{
+        {recent.length === 0 && (
+          <div style={{ ...v6.mono, fontSize: 9.5, color: v6.faint, letterSpacing: 1, padding: '6px 0' }}>NONE THIS SESSION</div>
+        )}
+        {recent.map(a => (
+          <div key={a.id} onClick={() => onOpenDetail?.(a)} style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '6px 0',
             borderBottom: `1px solid ${v6.hair}`,
@@ -347,7 +397,7 @@ function V6InspectionDetails({ running, onPauseResume }) {
                 <span style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>{a.id}</span>
                 <span style={{ ...v6.mono, fontSize: 10.5, color: '#ff8a8a' }}>{a.temp}</span>
               </div>
-              <div style={{ ...v6.mono, fontSize: 8.5, color: v6.faint, letterSpacing: 1, marginTop: 1 }}>{a.coords} · {a.time}</div>
+              <div style={{ ...v6.mono, fontSize: 8.5, color: v6.faint, letterSpacing: 1, marginTop: 1 }}>X {a.location?.x} Y {a.location?.y} · {a.time}</div>
             </div>
             <div style={{ ...v6.mono, fontSize: 8.5, color: v6.mute, letterSpacing: 1 }}>P{a.pass}</div>
           </div>
@@ -368,7 +418,7 @@ function V6InspectionDetails({ running, onPauseResume }) {
         }}>
           {running ? <><IconPause size={12} />PAUSE</> : <><IconPlay size={12} />RESUME</>}
         </button>
-        <button style={{
+        <button onClick={onStop} style={{
           padding: '10px 14px',
           background: 'rgba(255,255,255,0.04)',
           border: `1px solid ${v6.hair}`,
@@ -414,7 +464,7 @@ function V6TabToggle({ active, onChange }) {
 
 // ─── New manual control panel (inspiration-style buttons) ─────────────
 function V6ManualPanel({ onResume }) {
-  const [speed, setSpeed] = React.useState(45);
+  const { position, speed, setSpeed, api } = useArgus();
   const [zPos, setZPos] = React.useState(62);
   const jog = useV6Jog();
 
@@ -444,9 +494,9 @@ function V6ManualPanel({ onResume }) {
         padding: '8px 0',
       }}>
         {[
-          ['X', '0842'],
-          ['Y', '0314'],
-          ['Z', '1280'],
+          ['X', pad4(position?.x)],
+          ['Y', pad4(position?.y)],
+          ['Z', pad4(position?.z)],
         ].map(([axis, value], i) => (
           <div key={axis} style={{
             flex: 1,
@@ -468,21 +518,21 @@ function V6ManualPanel({ onResume }) {
           gap: 5,
         }}>
           <div />
-          <V6PillBtn id="up" jog={jog} dir="up" />
+          <V6PillBtn id="up" jog={jog} dir="up" cmd="forward" />
           <div />
-          <V6PillBtn id="left" jog={jog} dir="left" />
+          <V6PillBtn id="left" jog={jog} dir="left" cmd="left" />
           <V6HomeBtn id="home" jog={jog} />
-          <V6PillBtn id="right" jog={jog} dir="right" />
+          <V6PillBtn id="right" jog={jog} dir="right" cmd="right" />
           <div />
-          <V6PillBtn id="down" jog={jog} dir="down" />
+          <V6PillBtn id="down" jog={jog} dir="down" cmd="backward" />
           <div />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <div style={{ ...v6.mono, fontSize: 8.5, letterSpacing: 1.5, color: v6.mute, marginBottom: 1 }}>Z UP</div>
-          <V6PillBtn id="zup" jog={jog} dir="up" width={46} height={32} />
+          <V6PillBtn id="zup" jog={jog} dir="up" cmd="up" width={46} height={32} />
           <V6ZBar value={zPos} onChange={setZPos} />
-          <V6PillBtn id="zdown" jog={jog} dir="down" width={46} height={32} />
+          <V6PillBtn id="zdown" jog={jog} dir="down" cmd="down" width={46} height={32} />
           <div style={{ ...v6.mono, fontSize: 8.5, letterSpacing: 1.5, color: v6.mute, marginTop: 1 }}>Z DN</div>
         </div>
       </div>
@@ -499,7 +549,9 @@ function V6ManualPanel({ onResume }) {
           <div style={{ width: '100%', height: 2, background: 'rgba(255,255,255,0.06)' }}>
             <div style={{ height: '100%', width: `${speed}%`, background: OMV_BLUE_GLOW }} />
           </div>
-          <input type="range" min="0" max="100" value={speed} onChange={(e) => setSpeed(+e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+          <input type="range" min="0" max="100" value={speed}
+            onChange={(e) => { const v = +e.target.value; setSpeed(v); api?.setSpeedRemote(v); }}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
           <div style={{ position: 'absolute', left: `calc(${speed}% - 5px)`, width: 10, height: 10, background: '#fff', borderRadius: '50%' }} />
         </div>
       </div>
@@ -522,7 +574,8 @@ function V6ManualPanel({ onResume }) {
 }
 
 // Pill-style jog button (rounded rectangle, subtle fill)
-function V6PillBtn({ id, jog, dir, width, height }) {
+function V6PillBtn({ id, jog, dir, cmd, width, height }) {
+  const { api } = useArgus();
   const isHeld = jog.held === id;
   const arrow = {
     up: 'M5 14 L10 6 L15 14 Z',
@@ -530,10 +583,12 @@ function V6PillBtn({ id, jog, dir, width, height }) {
     left: 'M14 5 L14 15 L6 10 Z',
     right: 'M6 5 L6 15 L14 10 Z',
   }[dir];
+  const press = () => { jog.start(id); api?.move(cmd); };
+  const release = () => { jog.stop(); api?.stopMove(); };
   return (
     <button
-      onMouseDown={() => jog.start(id)} onMouseUp={jog.stop} onMouseLeave={jog.stop}
-      onTouchStart={(e) => { e.preventDefault(); jog.start(id); }} onTouchEnd={jog.stop}
+      onMouseDown={press} onMouseUp={release} onMouseLeave={() => { if (jog.held === id) release(); }}
+      onTouchStart={(e) => { e.preventDefault(); press(); }} onTouchEnd={(e) => { e.preventDefault(); release(); }}
       style={{
         position: 'relative',
         width: width || '100%', height: height || '100%',
@@ -556,11 +611,12 @@ function V6PillBtn({ id, jog, dir, width, height }) {
 
 // Center "XY" button (home)
 function V6HomeBtn({ id, jog }) {
+  const { api } = useArgus();
   const isHeld = jog.held === id;
   return (
     <button
-      onMouseDown={() => jog.start(id)} onMouseUp={jog.stop} onMouseLeave={jog.stop}
-      onTouchStart={(e) => { e.preventDefault(); jog.start(id); }} onTouchEnd={jog.stop}
+      onMouseDown={() => { jog.start(id); api?.gotoHome(); }} onMouseUp={jog.stop} onMouseLeave={jog.stop}
+      onTouchStart={(e) => { e.preventDefault(); jog.start(id); api?.gotoHome(); }} onTouchEnd={jog.stop}
       style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -645,12 +701,13 @@ function V6ZBar({ value, onChange }) {
 }
 
 // ─── Right rail ──────────────────────────────────────────────────────
-function V6RightRail({ activeTab, onTabChange, running, onPauseResume }) {
+function V6RightRail({ activeTab, onTabChange, running, onPauseResume, onStop, onOpenDetail }) {
+  const { detections } = useArgus();
   const [hoverAnomaly, setHoverAnomaly] = React.useState(null);
-  const anomalies = [
-    { id: 'A1', x: 0.32, y: 0.72, temp: '64.2°C', pass: '012', time: '14:18' },
-    { id: 'A2', x: 0.18, y: 0.30, temp: '38.4°C', pass: '009', time: '14:00' },
-  ];
+  // Map live detections to coverage-map pins via their normalized location.
+  const anomalies = (detections || [])
+    .filter(d => d.locNorm)
+    .map(d => ({ id: d.id, x: d.locNorm.x, y: d.locNorm.y, temp: d.temp, pass: d.pass, time: d.time }));
   return (
     <div style={{
       width: 360, flex: '0 0 360px',
@@ -662,7 +719,7 @@ function V6RightRail({ activeTab, onTabChange, running, onPauseResume }) {
       <V6CoverageBlock onAnomalyHover={setHoverAnomaly} anomalies={anomalies} hoverAnomaly={hoverAnomaly} />
       <V6TabToggle active={activeTab} onChange={onTabChange} />
       {activeTab === 'inspection'
-        ? <V6InspectionDetails running={running} onPauseResume={onPauseResume} />
+        ? <V6InspectionDetails running={running} onPauseResume={onPauseResume} onStop={onStop} onOpenDetail={onOpenDetail} />
         : <V6ManualPanel onResume={() => onTabChange('inspection')} />
       }
     </div>
@@ -671,10 +728,23 @@ function V6RightRail({ activeTab, onTabChange, running, onPauseResume }) {
 
 // ─── Hero feed with light HUD + manual FAB ───────────────────────────
 function V6HeroFeed() {
+  const { temp, position, fps } = useArgus();
   const [mode, setMode] = React.useState('thermal');
+  const tmin = temp?.min, tavg = temp?.avg, tmax = temp?.max;
+  // The thermal feed is contrast-stretched (coldest→hottest mapped across the
+  // iron gradient), so the legend auto-ranges to the live frame's min/max.
+  const ranged = (tmin != null && tmax != null && tmax > tmin);
+  const lo = ranged ? tmin : 12;
+  const hi = ranged ? tmax : 78;
+  const fmt = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}°C`);
   return (
     <div style={{ flex: 1, position: 'relative', background: '#000', overflow: 'hidden', minWidth: 0 }}>
-      <ThermalFeed mode={mode} anomaly={true} showCrosshair={true} showBrackets={false} label={null} />
+      {/* Live MJPEG feed — thermal (iron) or visible-light optical */}
+      <img
+        src={mode === 'thermal' ? '/api/camera/thermal' : '/api/camera/optical'}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        alt="camera feed"
+      />
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
         background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.5) 100%)' }} />
 
@@ -706,18 +776,20 @@ function V6HeroFeed() {
         ))}
       </div>
 
-      {/* Anomaly live banner */}
-      <div style={{
-        position: 'absolute', top: 16, right: 16,
-        padding: '7px 12px',
-        background: 'rgba(229,69,69,0.94)',
-        border: '1px solid #ff5a5a',
-        display: 'flex', alignItems: 'center', gap: 8,
-        color: '#fff', zIndex: 8,
-      }}>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', animation: 'pulse 1.2s infinite' }} />
-        <div style={{ ...v6.mono, fontSize: 10.5, letterSpacing: 1.2, fontWeight: 600 }}>ANOMALY · 64.2°C · LIVE</div>
-      </div>
+      {/* Anomaly live banner — only while the current frame flags a hotspot */}
+      {temp?.anomaly && (
+        <div style={{
+          position: 'absolute', top: 16, right: 16,
+          padding: '7px 12px',
+          background: 'rgba(229,69,69,0.94)',
+          border: '1px solid #ff5a5a',
+          display: 'flex', alignItems: 'center', gap: 8,
+          color: '#fff', zIndex: 8,
+        }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', animation: 'pulse 1.2s infinite' }} />
+          <div style={{ ...v6.mono, fontSize: 10.5, letterSpacing: 1.2, fontWeight: 600 }}>ANOMALY · {fmt(tmax)} · LIVE</div>
+        </div>
+      )}
 
       {/* Temp tape — top left */}
       <div style={{
@@ -731,9 +803,9 @@ function V6HeroFeed() {
         display: 'flex', flexDirection: 'column', gap: 6,
       }}>
         <div style={{ display: 'flex', gap: 16 }}>
-          <span><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>MIN</span>12.4°C</span>
-          <span><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>AVG</span>23.8°C</span>
-          <span style={{ color: '#ffd23a' }}><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>MAX</span>64.2°C</span>
+          <span><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>MIN</span>{fmt(tmin)}</span>
+          <span><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>AVG</span>{fmt(tavg)}</span>
+          <span style={{ color: '#ffd23a' }}><span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1, marginRight: 5 }}>MAX</span>{fmt(tmax)}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1 }}>IRON</span>
@@ -741,22 +813,19 @@ function V6HeroFeed() {
             <div style={{ width: 260, height: 5, background: 'linear-gradient(90deg, #1a0a2e, #5a1a3a, #c43a1f, #ff8a3d, #ffd23a, #fff8d0)' }} />
             {/* A1: tick marks at min / avg / max */}
             <div style={{ position: 'absolute', top: 5, left: 0, right: 0, height: 12, pointerEvents: 'none' }}>
-              {[
-                { v: 12.4, label: '12' },
-                { v: 23.8, label: '24' },
-                { v: 64.2, label: '64' },
-              ].map((t, i) => {
-                const pct = (t.v / 78) * 100;
+              {[tmin, tavg, tmax].map((tv, i) => {
+                if (tv == null) return null;
+                const pct = Math.max(0, Math.min(100, ((tv - lo) / (hi - lo)) * 100));
                 return (
                   <div key={i} style={{ position: 'absolute', left: `${pct}%`, top: 0, transform: 'translateX(-50%)' }}>
                     <div style={{ width: 1, height: 4, background: '#fff', opacity: 0.7 }} />
-                    <div style={{ ...v6.mono, fontSize: 8, color: v6.textDim, marginTop: 1, letterSpacing: 0.5 }}>{t.label}</div>
+                    <div style={{ ...v6.mono, fontSize: 8, color: v6.textDim, marginTop: 1, letterSpacing: 0.5 }}>{Math.round(tv)}</div>
                   </div>
                 );
               })}
             </div>
           </div>
-          <span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1 }}>78°C</span>
+          <span style={{ color: v6.mute, fontSize: 9, letterSpacing: 1 }}>{Math.round(hi)}°C</span>
         </div>
       </div>
 
@@ -770,24 +839,37 @@ function V6HeroFeed() {
         ...v6.mono, fontSize: 11, color: '#fff', letterSpacing: 0.5,
         zIndex: 4,
       }}>
-        X 638  Y 472  Z 1280 mm
+        X {Math.round(position?.x || 0)}  Y {Math.round(position?.y || 0)}  Z {Math.round(position?.z || 0)} mm
       </div>
 
       {/* REC indicator — bottom-right, balancing the position breadcrumb */}
-      <div style={{
-        position: 'absolute', bottom: 16, right: 16,
-        background: 'rgba(6,7,10,0.6)',
-        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-        border: `1px solid ${v6.hair}`,
-        padding: '7px 12px',
-        ...v6.mono, fontSize: 11, color: '#fff', letterSpacing: 0.5,
-        zIndex: 4,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5a5a', boxShadow: '0 0 8px #ff5a5a', animation: 'pulse 1.2s infinite' }} />
-        <span>REC · 14:22:08</span>
-        <span style={{ color: v6.mute, fontSize: 9.5 }}>29.7 fps</span>
-      </div>
+      <V6RecIndicator fps={fps} />
+    </div>
+  );
+}
+
+// REC indicator with a live recording clock + stream fps
+function V6RecIndicator({ fps }) {
+  const [recSeconds, setRecSeconds] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => setRecSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const recTime = new Date(recSeconds * 1000).toISOString().slice(11, 19);
+  return (
+    <div style={{
+      position: 'absolute', bottom: 16, right: 16,
+      background: 'rgba(6,7,10,0.6)',
+      backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+      border: `1px solid ${v6.hair}`,
+      padding: '7px 12px',
+      ...v6.mono, fontSize: 11, color: '#fff', letterSpacing: 0.5,
+      zIndex: 4,
+      display: 'flex', alignItems: 'center', gap: 10,
+    }}>
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5a5a', boxShadow: '0 0 8px #ff5a5a', animation: 'pulse 1.2s infinite' }} />
+      <span>REC · {recTime}</span>
+      <span style={{ color: v6.mute, fontSize: 9.5 }}>{fps ? `${fps.toFixed(1)} fps` : '— fps'}</span>
     </div>
   );
 }
@@ -862,10 +944,13 @@ function V6DetectionCard({ d, onClick }) {
 
 // ─── History strip — CRITICAL + HIGH only, with "+N more" chip ───────
 function V6History({ onOpenDetail }) {
-  const sorted = [...DETECTIONS].sort((a, b) => (b.date + ' ' + b.time).localeCompare(a.date + ' ' + a.time));
+  const { detections } = useArgus();
+  const all = detections || [];
+  const sorted = [...all].sort((a, b) => (b.date + ' ' + b.time).localeCompare(a.date + ' ' + a.time));
   const visible = sorted.filter(d => d.priority === 'critical' || d.priority === 'high');
   const today = sorted[0]?.date;
-  const todayCount = sorted.filter(d => d.date === today).length;
+  const todayCount = today ? sorted.filter(d => d.date === today).length : 0;
+  const lowerCount = all.filter(d => d.priority === 'medium' || d.priority === 'low').length;
 
   return (
     <div style={{
@@ -891,15 +976,28 @@ function V6History({ onOpenDetail }) {
         }}
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = OMV_BLUE_GLOW; e.currentTarget.style.color = '#fff'; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = v6.hairBright; e.currentTarget.style.color = v6.text; }}>
-          VIEW ALL · {DETECTIONS.length}
+          VIEW ALL · {all.length}
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14 M12 5l7 7-7 7" /></svg>
         </button>
       </div>
       <div style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', gap: 10, height: '100%' }}>
+          {visible.length === 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', ...v6.mono, fontSize: 10, color: v6.faint, letterSpacing: 1.5, paddingLeft: 2 }}>
+              NO CRITICAL OR HIGH DETECTIONS YET
+            </div>
+          )}
           {visible.map(d => (
             <V6DetectionCard key={d.id} d={d} onClick={() => onOpenDetail(d)} />
           ))}
+          {lowerCount > 0 && (
+            <div onClick={() => onOpenDetail(null)} style={{
+              flex: '0 0 auto', alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '0 18px', cursor: 'pointer',
+              border: `1px dashed ${v6.hairBright}`, color: v6.mute,
+              ...v6.mono, fontSize: 10, letterSpacing: 1.5,
+            }}>+{lowerCount} MORE</div>
+          )}
         </div>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 50, background: `linear-gradient(90deg, transparent, ${v6.surface})`, pointerEvents: 'none' }} />
       </div>
@@ -1045,57 +1143,185 @@ function V6AlarmModal({ detection, onAcknowledge, onSwitchManual }) {
 // ─── Root ─────────────────────────────────────────────────────────────
 function V6Argus() {
   const [activeTab, setActiveTab] = React.useState('inspection');
-  const [running, setRunning] = React.useState(true);
   const [alarm, setAlarm] = React.useState(null);
   const [showDetail, setShowDetail] = React.useState(false);
   const [selectedDetection, setSelectedDetection] = React.useState(null);
-  const isManual = activeTab === 'manual';
 
-  // Demo: fire alarm 2.5s after initial mount so spectators see the modal
+  // Live state fed by SocketIO.
+  const [socket, setSocket] = React.useState(null);
+  const [position, setPosition] = React.useState({ x: 0, y: 0, z: 0 });
+  const [temp, setTemp] = React.useState({ min: null, avg: null, max: null, anomaly: false });
+  const [scan, setScan] = React.useState({
+    mode: 'idle', progress: 0, elapsed_seconds: 0, eta_seconds: 0,
+    current_pass: 0, total_passes: 0, current_cell: 0, total_cells: 0,
+  });
+  const [status, setStatus] = React.useState(null);
+  const [detections, setDetections] = React.useState([]);
+  const [speed, setSpeed] = React.useState(45);
+  const [clock, setClock] = React.useState('');
+
+  const isManual = activeTab === 'manual';
+  const estopped = scan.mode === 'estop';
+  // Ground-truth running state: only "AUTONOMOUS" when the scan is actually
+  // running and nothing is holding it (manual tab, an open alarm, or E-stop).
+  const running = scan.mode === 'autonomous' && !isManual && !alarm && !estopped;
+
+  // Stream fps for the REC indicator — parsed from the Pi status detail.
+  const fps = React.useMemo(() => {
+    const m = /([\d.]+)\s*fps/.exec(status?.pi?.detail || '');
+    return m ? parseFloat(m[1]) : null;
+  }, [status]);
+
+  // Live UTC clock.
   React.useEffect(() => {
-    const t = setTimeout(() => setAlarm(DETECTIONS[0]), 2500);
-    return () => clearTimeout(t);
+    const tick = () => setClock(new Date().toUTCString().slice(17, 25));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
   }, []);
+
+  // SocketIO connection (io() is loaded globally from the socket.io client).
+  React.useEffect(() => {
+    if (typeof io === 'undefined') {
+      console.warn('socket.io client not loaded');
+      return;
+    }
+    const s = io();
+    setSocket(s);
+    window.__argusSocket = s;   // debug handle (console/E2E); harmless in prod
+
+    s.on('position_update', (data) => setPosition(data));
+    s.on('frame_stats', (data) => setTemp(data));
+    s.on('scan_progress', (data) => setScan(data));
+    s.on('status_update', (data) => setStatus(data));
+
+    s.on('new_detection', (detection) => {
+      setDetections(prev => [detection, ...prev]);
+      if (detection.priority === 'critical' || detection.priority === 'high') {
+        setAlarm(detection);
+      }
+    });
+
+    s.on('detection_updated', ({ id, status }) => {
+      setDetections(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+    });
+
+    s.on('estop_triggered', () => {
+      setScan(prev => ({ ...prev, mode: 'estop' }));
+    });
+
+    s.on('scan_complete', () => {
+      setScan(prev => ({ ...prev, mode: 'idle', progress: 1 }));
+    });
+
+    return () => s.disconnect();
+  }, []);
+
+  // Command helpers shared through context.
+  const emit = React.useCallback((ev, payload) => { socket && socket.emit(ev, payload || {}); }, [socket]);
+  const api = React.useMemo(() => ({
+    move: (direction) => emit('move', { direction, speed }),
+    stopMove: () => emit('stop_move', {}),
+    gotoHome: () => emit('goto_home', {}),
+    setSpeedRemote: (v) => emit('set_speed', { speed: v }),
+    pauseScan: () => emit('pause_scan', {}),
+    resumeScan: () => emit('resume_scan', {}),
+    stopScan: () => emit('stop_scan', {}),
+    estop: () => emit('estop', {}),
+    releaseEstop: () => emit('release_estop', {}),
+    acknowledge: (id, action) => emit('acknowledge_detection', { id, action }),
+  }), [emit, speed]);
+
+  // Tab switch: MANUAL always pauses autonomous; INSPECTION resumes it.
+  const onTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'manual') api.pauseScan();
+    else if (!estopped) api.resumeScan();
+  };
+
+  const onPauseResume = () => {
+    if (estopped) return;
+    if (running) api.pauseScan();
+    else api.resumeScan();
+  };
+
+  const onStop = () => api.stopScan();
+  // E-STOP is a toggle: engage when running, release (→ PAUSED) when e-stopped.
+  // There is no separate release control in the UI (Argus Spec §7 leaves the
+  // mechanism to the backend); the button itself releases.
+  const onEstop = () => { if (estopped) api.releaseEstop(); else api.estop(); };
+
+  const onAcknowledge = () => {
+    if (alarm) api.acknowledge(alarm.id, 'acknowledge');
+    setAlarm(null);
+    // Resume autonomous unless the operator is in manual or the system is
+    // e-stopped (FLOW 2 / FLOW 6 / §7).
+    if (!isManual && !estopped) api.resumeScan();
+  };
+  const onSwitchManual = () => {
+    if (alarm) api.acknowledge(alarm.id, 'acknowledge');
+    setAlarm(null);
+    setActiveTab('manual');
+    api.pauseScan();
+  };
+
+  const openDetail = (d) => { setSelectedDetection(d); setShowDetail(true); };
+  const onDetectionAction = (id, action) => {
+    api.acknowledge(id, action);
+    if (action === 'switch_manual') { setShowDetail(false); setActiveTab('manual'); api.pauseScan(); }
+  };
 
   const HistoryDetailPage = window.V6HistoryDetailPage;
 
+  const ctxValue = {
+    socket, position, temp, scan, status, detections, fps,
+    speed, setSpeed, api, clock, activeTab,
+    onEstop, estopped,
+  };
+
   return (
-    <div style={{
-      width: 1440, height: 900,
-      background: v6.canvas,
-      color: v6.text,
-      fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-      position: 'relative',
-    }} data-screen-label="01 Argus">
-      <V6Header />
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-        <V6HeroFeed />
-        <V6RightRail
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          running={running && !isManual && !alarm}
-          onPauseResume={() => setRunning(!running)}
-        />
+    <ArgusCtx.Provider value={ctxValue}>
+      <div style={{
+        width: 1440, height: 900,
+        background: v6.canvas,
+        color: v6.text,
+        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        position: 'relative',
+      }} data-screen-label="01 Argus">
+        <V6Header />
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
+          <V6HeroFeed />
+          <V6RightRail
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            running={running}
+            onPauseResume={onPauseResume}
+            onStop={onStop}
+            onOpenDetail={openDetail}
+          />
+        </div>
+        <V6History onOpenDetail={openDetail} />
+
+        {alarm && (
+          <V6AlarmModal
+            detection={alarm}
+            onAcknowledge={onAcknowledge}
+            onSwitchManual={onSwitchManual}
+          />
+        )}
+
+        {showDetail && HistoryDetailPage && (
+          <HistoryDetailPage
+            initialSelected={selectedDetection}
+            detections={detections}
+            onAction={onDetectionAction}
+            onClose={() => { setShowDetail(false); setSelectedDetection(null); }}
+          />
+        )}
       </div>
-      <V6History onOpenDetail={(d) => { setSelectedDetection(d); setShowDetail(true); }} />
-
-      {alarm && (
-        <V6AlarmModal
-          detection={alarm}
-          onAcknowledge={() => setAlarm(null)}
-          onSwitchManual={() => { setAlarm(null); setActiveTab('manual'); }}
-        />
-      )}
-
-      {showDetail && HistoryDetailPage && (
-        <HistoryDetailPage
-          initialSelected={selectedDetection}
-          onClose={() => { setShowDetail(false); setSelectedDetection(null); }}
-        />
-      )}
-    </div>
+    </ArgusCtx.Provider>
   );
 }
 

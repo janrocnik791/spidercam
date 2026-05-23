@@ -44,6 +44,11 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
+<!-- Socket.IO client (v4 — protocol-compatible with the Pi's python-socketio
+     server). python-socketio does not bundle the client JS, so load it from the
+     official CDN rather than /socket.io/socket.io.js. -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+
 <!-- Shared components (icons, ThermalFeed, HistoryThumb, CoverageMap) -->
 <script type="text/babel" src="shared.jsx"></script>
 <!-- V6 data + components -->

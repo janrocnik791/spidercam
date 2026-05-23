@@ -337,6 +337,7 @@ void vframe(char ep[],char EP_error[], int r, int actual_length, unsigned char b
 
   int min = 0x10000, max = 0;
   float rms = 0;
+  long sum = 0;   // running sum of raw values, for a true frame mean
 
 // Make a unsigned short array from what comes from the thermal frame
 // find the max, min and RMS (not used yet) values of the array
@@ -352,7 +353,8 @@ void vframe(char ep[],char EP_error[], int r, int actual_length, unsigned char b
       
       if (v < min) min = v;
       if (v > max) { max = v; maxx = x; maxy = y; }
-      rms += v * v;      
+      rms += v * v;
+      sum += v;
     }
   }
     
@@ -387,6 +389,21 @@ void vframe(char ep[],char EP_error[], int r, int actual_length, unsigned char b
   int med = (pix[59 * 160 + 79]+pix[59 * 160 + 80]+pix[60 * 160 + 79]+pix[60 * 160 + 80])/4;
   sprintf(st2," %.1f/%.1f/%.1f'C", raw2temperature(min),raw2temperature(med),raw2temperature(max));
   strcat(st1, st2);
+
+  // Publish the real per-frame temperatures (°C) for the Argus backend.
+  // The Y8 written to /dev/video1 is per-frame contrast-stretched, so absolute
+  // temperatures cannot be recovered downstream — expose them here. Format:
+  //   "<min> <mean> <max> <spot>"   (spot = 2x2 centre crosshair)
+  {
+    int mean = sum / (160 * 120);
+    FILE *tf = fopen("/tmp/flir_temps", "w");
+    if (tf) {
+      fprintf(tf, "%.1f %.1f %.1f %.1f\n",
+              raw2temperature(min), raw2temperature(mean),
+              raw2temperature(max), raw2temperature(med));
+      fclose(tf);
+    }
+  }
   
   #define MAX 26 // max chars in line  160/6=26,6 
   strncpy(st2, st1, MAX);

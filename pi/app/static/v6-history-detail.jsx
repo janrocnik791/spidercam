@@ -1,9 +1,13 @@
 // V6 — History Detail Page (full-overlay)
 // Slides over V6Argus. Filters by priority, status, date, mission, area.
 // List on left, full detail on right.
+//
+// Detections are passed in live from V6Argus (the `detections` prop) rather
+// than read from the demo global, and operator actions are reported back up
+// through the `onAction(id, action)` callback so the backend records them.
 
 (() => {
-  const { v6, OMV_NAVY, OMV_NAVY_HI, OMV_BLUE_GLOW, DETECTIONS, PRIORITY, STATUS } = window;
+  const { v6, OMV_NAVY, OMV_NAVY_HI, OMV_BLUE_GLOW, PRIORITY, STATUS } = window;
 
   function PriorityFilterPill({ k, label, active, count, onClick }) {
     const color = k === 'all' ? OMV_BLUE_GLOW : PRIORITY[k]?.color || v6.mute;
@@ -44,7 +48,7 @@
     );
   }
 
-  function LocationPin({ detection, w = 200, h = 132 }) {
+  function LocationPin({ detection, allDetections, w = 200, h = 132 }) {
     const margin = 6;
     const cx = margin + detection.locNorm.x * (w - margin * 2);
     const cy = margin + detection.locNorm.y * (h - margin * 2);
@@ -59,7 +63,7 @@
           <line x1={margin} y1={(h - margin * 2) / 2 + margin} x2={w - margin} y2={(h - margin * 2) / 2 + margin} />
         </g>
         {/* other detections, dim */}
-        {DETECTIONS.filter(d => d.id !== detection.id).map(d => (
+        {allDetections.filter(d => d.id !== detection.id && d.locNorm).map(d => (
           <circle key={d.id} cx={margin + d.locNorm.x * (w - margin * 2)} cy={margin + d.locNorm.y * (h - margin * 2)} r="2" fill={PRIORITY[d.priority].color} opacity="0.25" />
         ))}
         {/* target */}
@@ -69,7 +73,7 @@
         <circle cx={cx} cy={cy} r="4" fill={color} stroke="#fff" strokeWidth="1.3" />
         <g fontFamily="'JetBrains Mono', monospace" fill="rgba(255,255,255,0.45)" fontSize="8">
           <text x={margin} y={margin - 1}>0,0</text>
-          <text x={w - margin} y={h - margin + 9} textAnchor="end">1200 × 800 mm</text>
+          <text x={w - margin} y={h - margin + 9} textAnchor="end">800 × 800 mm</text>
         </g>
       </svg>
     );
@@ -124,7 +128,7 @@
     );
   }
 
-  function DetectionDetail({ d, onSwitchManual }) {
+  function DetectionDetail({ d, allDetections, onAction }) {
     if (!d) {
       return (
         <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: v6.faint, ...v6.mono, fontSize: 11, letterSpacing: 1.5 }}>
@@ -210,7 +214,7 @@
           <div>
             <div style={{ ...v6.mono, fontSize: 9, color: v6.faint, letterSpacing: 1.5, marginBottom: 10, textTransform: 'uppercase' }}>Location on plant</div>
             <div style={{ aspectRatio: '12/8', background: v6.inset }}>
-              <LocationPin detection={d} />
+              <LocationPin detection={d} allDetections={allDetections} />
             </div>
           </div>
           <div>
@@ -231,7 +235,7 @@
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, paddingTop: 6, borderTop: `1px solid ${v6.hair}` }}>
           {d.status !== 'acknowledged' && d.status !== 'resolved' && (
-            <button style={{
+            <button onClick={() => onAction?.(d.id, 'acknowledge')} style={{
               padding: '10px 18px',
               background: 'rgba(255,255,255,0.05)',
               border: `1px solid ${v6.hairBright}`,
@@ -240,7 +244,7 @@
             }}>ACKNOWLEDGE</button>
           )}
           {d.status !== 'resolved' && (
-            <button style={{
+            <button onClick={() => onAction?.(d.id, 'resolve')} style={{
               padding: '10px 18px',
               background: 'rgba(91,186,111,0.10)',
               border: `1px solid rgba(91,186,111,0.4)`,
@@ -249,7 +253,7 @@
             }}>MARK RESOLVED</button>
           )}
           {d.status !== 'false_positive' && (
-            <button style={{
+            <button onClick={() => onAction?.(d.id, 'false_positive')} style={{
               padding: '10px 18px',
               background: 'rgba(255,255,255,0.04)',
               border: `1px solid ${v6.hair}`,
@@ -258,7 +262,7 @@
             }}>FALSE POSITIVE</button>
           )}
           <div style={{ flex: 1 }} />
-          <button onClick={onSwitchManual} style={{
+          <button onClick={() => onAction?.(d.id, 'switch_manual')} style={{
             padding: '10px 18px',
             background: OMV_NAVY_HI,
             border: `1px solid ${OMV_BLUE_GLOW}`,
@@ -276,20 +280,22 @@
     );
   }
 
-  function V6HistoryDetailPage({ initialSelected, onClose }) {
+  function V6HistoryDetailPage({ initialSelected, detections, onAction, onClose }) {
+    const data = detections || window.DETECTIONS || [];
     const [filters, setFilters] = React.useState({
       priority: 'all',
       status: 'all',
       date: 'all',
       mission: 'all',
     });
-    const [selectedId, setSelectedId] = React.useState(initialSelected?.id || DETECTIONS[0].id);
+    const [selectedId, setSelectedId] = React.useState(initialSelected?.id || data[0]?.id || null);
+    const today = data[0]?.date;
 
     // Filter detections
-    const filtered = DETECTIONS.filter(d => {
+    const filtered = data.filter(d => {
       if (filters.priority !== 'all' && d.priority !== filters.priority) return false;
       if (filters.status !== 'all' && d.status !== filters.status) return false;
-      if (filters.date === 'today' && d.date !== DETECTIONS[0].date) return false;
+      if (filters.date === 'today' && d.date !== today) return false;
       if (filters.mission !== 'all' && d.mission !== filters.mission) return false;
       return true;
     }).sort((a, b) => {
@@ -303,15 +309,15 @@
 
     // Counts per priority
     const counts = {
-      all: DETECTIONS.length,
-      critical: DETECTIONS.filter(d => d.priority === 'critical').length,
-      high: DETECTIONS.filter(d => d.priority === 'high').length,
-      medium: DETECTIONS.filter(d => d.priority === 'medium').length,
-      low: DETECTIONS.filter(d => d.priority === 'low').length,
+      all: data.length,
+      critical: data.filter(d => d.priority === 'critical').length,
+      high: data.filter(d => d.priority === 'high').length,
+      medium: data.filter(d => d.priority === 'medium').length,
+      low: data.filter(d => d.priority === 'low').length,
     };
 
     const selected = filtered.find(d => d.id === selectedId) || filtered[0] || null;
-    const missions = [...new Set(DETECTIONS.map(d => d.mission))];
+    const missions = [...new Set(data.map(d => d.mission))];
 
     return (
       <div style={{
@@ -348,7 +354,7 @@
           </div>
           <div style={{ flex: 1 }} />
           <span style={{ ...v6.mono, fontSize: 10.5, color: v6.mute, letterSpacing: 1.2 }}>
-            <span style={{ color: '#fff' }}>{filtered.length}</span> / {DETECTIONS.length} SHOWN
+            <span style={{ color: '#fff' }}>{filtered.length}</span> / {data.length} SHOWN
           </span>
         </div>
 
@@ -411,7 +417,7 @@
           }}>
             {filtered.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: v6.faint, ...v6.mono, fontSize: 11, letterSpacing: 1.5 }}>
-                NO DETECTIONS MATCH FILTERS
+                {data.length === 0 ? 'NO DETECTIONS YET' : 'NO DETECTIONS MATCH FILTERS'}
               </div>
             ) : (
               filtered.map(d => (
@@ -420,7 +426,7 @@
             )}
           </div>
           {/* Detail */}
-          <DetectionDetail d={selected} onSwitchManual={onClose} />
+          <DetectionDetail d={selected} allDetections={data} onAction={onAction} />
         </div>
       </div>
     );

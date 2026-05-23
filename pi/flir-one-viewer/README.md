@@ -284,3 +284,71 @@ calibration lives in the camera's own firmware and isn't exposed to libusb.
   `infincia/flir-one-documentation` wiki
 
 GPLv2 — same as the upstream driver.
+
+## Argus Backend Integration
+
+The `pi/app/` Flask + SocketIO backend (the **Argus** operator UI) consumes
+this camera pipeline. This section records what was built on top of the driver
+and the camera-specific things that were verified or corrected while wiring it.
+
+### What was built
+
+- **Camera service** (`app/services/camera_flir.py`) — `FLIROneProCamera`
+  drains `/dev/video1` (Y8 thermal) and `/dev/video2` (visible MJPEG) with one
+  background reader thread each, exactly like `viewer/viewer.py`, so HTTP
+  clients never stall capture and a USB drop just freezes the last frame.
+- **MJPEG endpoints** — `GET /api/camera/thermal` (iron-colorized) and
+  `GET /api/camera/optical` (visible), plus `GET /api/camera/thermal/stats`.
+- **SocketIO live channel** — `position_update` (10 Hz), `frame_stats` (~8 Hz),
+  `scan_progress` (1 Hz), `status_update` (2 s), and detection/E-stop events;
+  inbound `move`/`stop_move`/`goto_home`/`set_speed`/`pause_scan`/…/`estop`.
+- **ESP32 bridge** (`app/services/esp_client.py`) — every call degrades to a
+  graceful `ESP32Unreachable` so a missing controller never crashes the server.
+- **Frontend wiring** — the Argus React UI now reads a live SocketIO feed and
+  renders the two MJPEG streams in the hero `<img>`; demo data was removed.
+
+Run it with `pi/start_argus.sh` (loads v4l2loopback if needed, starts this
+driver if it isn't already running, then launches the server on `:5000`).
+
+### Camera-specific findings & fixes
+
+- **There is no `--pro` flag.** The driver's only argument is the palette file
+  (the Pro is its default target). The original integration brief called for
+  `flirone-v4l2 --pro …`; that would be parsed as a missing palette path and
+  abort. `start_argus.sh` passes the palette only — matching this README and
+  `driver/flirone-v4l2.c` (`argc < 2`).
+- **`/dev/video1` is grayscale Y8, not colorized.** The brief assumed video1
+  was the colorized thermal feed. It is actually Y8 (R=G=B); the *colorized*
+  RGB thermal is `/dev/video3`. Argus reads the Y8 and applies an **iron LUT
+  built in Python from the exact control colours of the UI's temp-tape legend**,
+  so the live feed and the legend agree. (Driver-side `/dev/video3` would also
+  work but wouldn't necessarily match the legend gradient.)
+- **The visible feed `/dev/video2` is NOT black.** Verified on-device:
+  `cv2.VideoCapture(2)` returns `(1080, 1440, 3)` with mean ≈ 116 — the
+  driver's `FRAME_WIDTH1 1440 / FRAME_HEIGHT1 1080` fix (documented above) is in
+  place, so OpenCV decodes the full JPEG. No further diagnosis was needed; the
+  service just downscales it to 640×480 for streaming.
+- **Real temperatures via a driver side-channel (`/tmp/flir_temps`).** The Y8
+  on `/dev/video1` is per-frame contrast-stretched, so absolute per-pixel temps
+  can't be recovered from the loopback feed, and the true min/med/max the driver
+  computes (`raw2temperature()` + `plank.h`) were only **burned as text into the
+  frame** at row 120 — which is *below* the 120 rows actually `write()`n to
+  `/dev/video1`, so they never reached a consumer. First symptom: a face read
+  ~78 °C (the Y8-estimate always pinned max to the top of its window).
+  **Fix:** the driver now also writes the real `"min mean max spot"` (°C) to
+  `/tmp/flir_temps` every frame (a `sum` was added for a true frame mean), and
+  `camera_flir.py` reports those when the file is fresh (falling back to the Y8
+  estimate otherwise). A face now reads ~33–38 °C. Absolute values are still a
+  few °C high (generic Planck constants — see the note above), but relative
+  readings and the auto-ranged palette legend are correct. The live anomaly
+  badge uses a localized-hotspot heuristic on the Y8, independent of
+  calibration. *If you pull a fresh upstream driver over this tree, re-apply the
+  `sum`/`/tmp/flir_temps` block in `vframe()` (alongside the un-comment and
+  resolution fixes above) or temps go back to the broken Y8 estimate.*
+- **Socket.IO client JS isn't bundled.** Modern `python-socketio` (5.16) ships
+  no `socket.io.js`, so `GET /socket.io/socket.io.js` returns 400. `Argus.html`
+  loads the v4 client from the official CDN instead; it is protocol-compatible
+  with the Engine.IO v4 server (the `/socket.io/?EIO=4` handshake returns 200).
+- **Run under system python, not `.venv`.** `/usr/bin/python3` has
+  `cv2`/`numpy`/`flask` from apt; the local `.venv` was built for the MLX90640
+  path and has no `cv2`. Only `flask-socketio` had to be added on top.

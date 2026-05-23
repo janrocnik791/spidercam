@@ -1,18 +1,29 @@
-# SpiderCam Pi – Python dependencies
-# Install with: pip install -r requirements.txt
+# SpiderCam Pi / Argus – Python dependencies
+#
+# On the Pi, the Argus server runs under the SYSTEM python (/usr/bin/python3),
+# which already provides cv2 / numpy / flask / requests via apt
+# (python3-opencv, python3-numpy, python3-flask). Only the SocketIO stack
+# needs installing on top:
+#     pip install --break-system-packages flask-socketio python-socketio simple-websocket
+# The .venv in this folder is for the (currently unused) MLX90640 path only and
+# does not contain cv2.
 
 flask>=3.0
-flask-socketio>=5.3
-requests>=2.31
+flask-socketio>=5.3          # SocketIO server (Flask integration)
+python-socketio>=5.9         # pulled in by flask-socketio; pinned for clarity
+simple-websocket>=1.0        # websocket transport for async_mode="threading"
+requests>=2.31               # Pi → ESP32 HTTP bridge
 
 # Thermal camera
-adafruit-circuitpython-mlx90640   # MLX90640 via I²C
-# opencv-python                   # FLIR One Pro frame capture (add when camera arrives)
+adafruit-circuitpython-mlx90640   # MLX90640 via I²C (alternate camera, unused)
 
 # Image processing & detection
 numpy>=1.26
-opencv-python-headless>=4.9       # cv2 without GUI (headless Pi)
-scipy>=1.12                        # Optional: used if Gaussian filter via scipy preferred
+opencv-python-headless>=4.9       # cv2 without GUI; on the Pi this is python3-opencv (apt)
+scipy>=1.12                        # Optional: Gaussian filter for detection pipeline
 
 # Utilities
 python-dotenv>=1.0                 # Load .env for local dev overrides
+
+# NOTE: async_mode="threading" is used (see app/__init__.py), so eventlet/gevent
+# are intentionally NOT required.

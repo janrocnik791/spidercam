@@ -1,104 +1,73 @@
 """
 SpiderCam Pi – Camera Routes
+
+MJPEG streams + a JSON stats fallback, served from the FLIR camera service.
+
+    GET /api/camera/thermal        multipart MJPEG, iron-colorized thermal
+    GET /api/camera/optical        multipart MJPEG, visible-light camera
+    GET /api/camera/thermal/stats  {"min","avg","max"} in °C (SocketIO is primary)
+
+The hero <img> in the Argus UI points straight at /thermal and /optical.
 """
 
 import time
-import threading
 
 import cv2
-import numpy as np
 from flask import Blueprint, Response, jsonify
 
-from app.services.camera_base import get_camera
+from app import config
+from app.services import runtime
 
 camera_bp = Blueprint("camera", __name__)
-_camera = None
-_cam_lock = threading.Lock()
 
-_W, _H = 640, 480
-_BAR_W = 40
-_FONT = cv2.FONT_HERSHEY_SIMPLEX
+_STREAM_DELAY = 1.0 / 15.0   # cap each MJPEG stream at ~15 fps
+_ENCODE = [cv2.IMWRITE_JPEG_QUALITY, config.FLIR_JPEG_QUALITY]
 
 
-def _get_camera():
-    global _camera
-    if _camera is None:
-        _camera = get_camera()
-    return _camera
+def _mjpeg(grab):
+    """Yield multipart/x-mixed-replace frames from ``grab()`` (returns BGR or None)."""
+    while True:
+        frame = grab()
+        if frame is None:
+            time.sleep(0.05)
+            continue
+        ok, buf = cv2.imencode(".jpg", frame, _ENCODE)
+        if not ok:
+            time.sleep(0.05)
+            continue
+        jpeg = buf.tobytes()
+        yield (b"--frame\r\n"
+               b"Content-Type: image/jpeg\r\n"
+               b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n"
+               + jpeg + b"\r\n")
+        time.sleep(_STREAM_DELAY)
 
 
-def _render_frame(raw: np.ndarray) -> np.ndarray:
-    """Return a composite BGR image: upscaled thermal + colorbar strip."""
-    t_min, t_max = float(raw.min()), float(raw.max())
-
-    # Upscale 32×24 → 640×480, nearest-neighbour keeps the block style
-    norm = cv2.normalize(raw, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-    norm_up = cv2.resize(norm, (_W, _H), interpolation=cv2.INTER_NEAREST)
-    color = cv2.applyColorMap(norm_up, cv2.COLORMAP_INFERNO)
-
-    # Min/max text overlay in top-left
-    cv2.putText(color, f"min {t_min:.1f}C", (10, 26), _FONT, 0.65, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(color, f"min {t_min:.1f}C", (10, 26), _FONT, 0.65, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(color, f"max {t_max:.1f}C", (10, 52), _FONT, 0.65, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(color, f"max {t_max:.1f}C", (10, 52), _FONT, 0.65, (255, 255, 255), 1, cv2.LINE_AA)
-
-    # Colorbar: 480×40 vertical gradient, hot at top
-    grad = np.linspace(255, 0, _H, dtype=np.uint8).reshape(_H, 1)
-    colorbar = cv2.applyColorMap(np.tile(grad, (1, _BAR_W)), cv2.COLORMAP_INFERNO)
-    # Max label at top, min at bottom
-    cv2.putText(colorbar, f"{t_max:.0f}", (3, 14), _FONT, 0.38, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(colorbar, f"{t_max:.0f}", (3, 14), _FONT, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(colorbar, f"{t_min:.0f}", (3, _H - 5), _FONT, 0.38, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(colorbar, f"{t_min:.0f}", (3, _H - 5), _FONT, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
-
-    return np.concatenate([color, colorbar], axis=1)
+def _thermal_only():
+    if runtime.camera is None:
+        return None
+    frame, _ = runtime.camera.get_thermal_frame()
+    return frame
 
 
-@camera_bp.route("/frame")
-def frame():
-    cam = _get_camera()
-    with _cam_lock:
-        raw = cam.get_frame()
-    img = _render_frame(raw)
-    _, buf = cv2.imencode(".png", img)
-    return Response(buf.tobytes(), mimetype="image/png")
+@camera_bp.route("/thermal")
+def thermal_stream():
+    return Response(_mjpeg(_thermal_only),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-@camera_bp.route("/frame.json")
-def frame_json():
-    cam = _get_camera()
-    with _cam_lock:
-        raw = cam.get_frame()
-    h, w = raw.shape
-    return jsonify({
-        "temps": raw.tolist(),
-        "min": float(raw.min()),
-        "max": float(raw.max()),
-        "width": w,
-        "height": h,
-    })
+@camera_bp.route("/optical")
+def optical_stream():
+    grab = (lambda: runtime.camera.get_visual_frame()) if runtime.camera else (lambda: None)
+    return Response(_mjpeg(grab),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-@camera_bp.route("/stream")
-def stream():
-    def generate():
-        cam = _get_camera()
-        while True:
-            try:
-                with _cam_lock:
-                    raw = cam.get_frame()
-                img = _render_frame(raw)
-                _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n"
-                    + buf.tobytes()
-                    + b"\r\n"
-                )
-            except Exception:
-                time.sleep(0.25)
-
-    return Response(
-        generate(),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-    )
+@camera_bp.route("/thermal/stats")
+def thermal_stats():
+    if runtime.camera is None:
+        return jsonify({"min": None, "avg": None, "max": None}), 503
+    stats = runtime.camera.get_thermal_stats()
+    if stats is None:
+        return jsonify({"min": None, "avg": None, "max": None}), 503
+    return jsonify(stats)
