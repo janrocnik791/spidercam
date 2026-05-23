@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Argus — Logo · 3 directions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #06080c;
+    color: #eef0f3;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  * { box-sizing: border-box; }
+
+  .argus-logo {
+    --logo-color: #ffffff;
+    --logo-bracket-width: 3;
+    --logo-stroke: 1.8;
+    display: block;
+  }
+  .argus-logo .bracket { stroke: var(--logo-color); stroke-linecap: square; fill: none; }
+  .argus-logo .ink-stroke { stroke: var(--logo-color); fill: none; }
+  .argus-logo .ink-fill   { fill: var(--logo-color); }
+
+  .argus-word {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.42em;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .page { max-width: 1240px; margin: 0 auto; padding: 56px 40px 80px; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.25em;
+    text-transform: uppercase; color: #7a7468;
+  }
+  .display {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic; font-size: 34px; line-height: 1;
+    margin: 8px 0 4px; color: #fff;
+  }
+  .lede {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.06em; color: #8a8f99; line-height: 1.7;
+    max-width: 720px; margin-top: 12px;
+  }
+  .hair { height: 1px; background: rgba(238,232,222,0.10); margin: 26px 0; }
+
+  /* 3-direction grid */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card {
+    background: #0c0f15; border: 1px solid rgba(238,232,222,0.08);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .card.light  { background: #f3efe7; color: #06080c; }
+  .card.gloss  { background: radial-gradient(ellipse at top, #1c2230, #06080c 80%); }
+  .card-stage {
+    display: grid; place-items: center; padding: 56px 24px;
+    min-height: 280px;
+  }
+  .card-foot {
+    border-top: 1px solid rgba(238,232,222,0.07);
+    padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.18em; color: #7a7468;
+  }
+  .card.light .card-foot { border-top-color: rgba(0,0,0,0.07); color: rgba(0,0,0,0.45); }
+  .card-head {
+    padding: 14px 16px 0;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .card-head .name {
+    font-family: Georgia, serif; font-style: italic; font-size: 18px; color: #fff;
+  }
+  .card-head .id {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: 0.25em; color: #7a7468;
+  }
+  .card-desc {
+    padding: 4px 16px 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.04em; color: #8a8f99; line-height: 1.6;
+  }
+
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .lockup .col { display: flex; flex-direction: column; }
+  .lockup .sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.42em;
+    letter-spacing: 0.22em; color: rgba(255,255,255,0.55);
+    margin-top: 0.55em;
+  }
+  .stacked { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  /* sizing helpers */
+  .size-xl { --size: 80px; }
+  .size-lg { --size: 56px; }
+  .size-md { --size: 32px; }
+  .size-sm { --size: 18px; }
+  .lockup .argus-word { font-size: var(--size); }
+  .lockup .argus-logo {
+    width: calc(var(--size) * 1.05);
+    height: calc(var(--size) * 1.05);
+  }
+
+  .scale-row {
+    display: flex; align-items: flex-end; gap: 36px;
+    justify-content: center; padding: 36px 20px;
+  }
+  .scale-row > div { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .scale-row .lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: 0.2em; color: #7a7468;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="eyebrow">Brand · Mark · Iteration 02</div>
+  <h1 class="display">Three directions for the center.</h1>
+  <p class="lede">
+    Corner brackets stay — they read as the gantry footprint. The cube is out.
+    Three replacements below: a precision sensor pod, an instrument reticle,
+    and an abstract geometric form. Pick a direction and I'll refine it across
+    every lockup + size.
+  </p>
+
+  <div class="hair"></div>
+
+  <!-- ── D · COMBINED (A + C) hero ───────────────────────────── -->
+  <div class="eyebrow">Combined direction</div>
+  <div class="display" style="font-size: 26px; margin-bottom: 16px;">D · Pod with iris.</div>
+  <p class="lede" style="margin-top: 0; margin-bottom: 22px;">
+    Sensor pod body + cables from A, three-bladed iris from C in place of the simple aperture.
+    Keeps the "gantry-carries-a-camera" reading but the lens is unmistakably high-tech.
+  </p>
+
+  <div class="card gloss" style="margin-bottom: 18px;">
+    <div class="card-head">
+      <div class="name">Pod with iris.</div>
+      <div class="id">D</div>
+    </div>
+    <div class="card-desc">A + C combined. Cables in, pod body, three-bladed iris as the sensor.</div>
+    <div class="card-stage" style="min-height: 320px;">
+      <div class="lockup size-xl">
+        <svg class="argus-logo" viewBox="0 0 64 64">
+          <!-- 4 corner brackets -->
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <!-- Cables from brackets to pod corners -->
+          <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+          <!-- Pod body — slightly larger than A to host the iris -->
+          <path class="ink-fill"
+                d="M 22 22
+                   L 42 22
+                   L 42 38
+                   Q 42 42 38 42
+                   L 26 42
+                   Q 22 42 22 38
+                   Z" />
+          <!-- Iris well: dark circle cut out of the pod body -->
+          <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+          <!-- Three-bladed iris inside the well -->
+          <g class="ink-fill" transform="translate(32 31)">
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+          </g>
+          <!-- Tiny center dot -->
+          <circle cx="32" cy="31" r="1" fill="#06080c" />
+        </svg>
+        <div class="col">
+          <div class="argus-word">ARGUS</div>
+          <div class="sub">THERMAL INSPECTION · OMV</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-foot">
+      <span>D · POD + IRIS</span>
+      <span>A ⊕ C</span>
+    </div>
+  </div>
+
+  <!-- D at icon size for clarity -->
+  <div class="grid3" style="margin-bottom: 18px;">
+    <div class="card">
+      <div class="card-stage" style="padding: 40px;">
+        <svg class="argus-logo" viewBox="0 0 64 64" style="width: 200px; height: 200px;">
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+          <path class="ink-fill" d="M 22 22 L 42 22 L 42 38 Q 42 42 38 42 L 26 42 Q 22 42 22 38 Z" />
+          <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+          <g class="ink-fill" transform="translate(32 31)">
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+          </g>
+          <circle cx="32" cy="31" r="1" fill="#06080c" />
+        </svg>
+      </div>
+      <div class="card-foot"><span>D · POD + IRIS</span><span>ICON</span></div>
+    </div>
+
+    <!-- D in OMV navy for comparison -->
+    <div class="card">
+      <div class="card-stage" style="padding: 40px;">
+        <svg class="argus-logo" viewBox="0 0 64 64" style="--logo-color: #3b7dd8; width: 200px; height: 200px;">
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+          <path class="ink-fill" d="M 22 22 L 42 22 L 42 38 Q 42 42 38 42 L 26 42 Q 22 42 22 38 Z" />
+          <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+          <g class="ink-fill" transform="translate(32 31)">
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+            <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+          </g>
+          <circle cx="32" cy="31" r="1" fill="#06080c" />
+        </svg>
+      </div>
+      <div class="card-foot"><span>D · ACCENT TINT</span><span>OMV BLUE</span></div>
+    </div>
+
+    <!-- D scale ladder -->
+    <div class="card">
+      <div class="scale-row" style="padding: 32px 16px; gap: 24px;">
+        <div>
+          <div class="lockup size-lg">
+            <svg class="argus-logo" viewBox="0 0 64 64">
+              <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+              <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+              <path class="ink-fill" d="M 22 22 L 42 22 L 42 38 Q 42 42 38 42 L 26 42 Q 22 42 22 38 Z" />
+              <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+              <g class="ink-fill" transform="translate(32 31)">
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+              </g>
+              <circle cx="32" cy="31" r="1" fill="#06080c" />
+            </svg>
+            <div class="argus-word">ARGUS</div>
+          </div>
+          <div class="lbl">56 PX</div>
+        </div>
+        <div>
+          <div class="lockup size-md">
+            <svg class="argus-logo" viewBox="0 0 64 64">
+              <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+              <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+              <path class="ink-fill" d="M 22 22 L 42 22 L 42 38 Q 42 42 38 42 L 26 42 Q 22 42 22 38 Z" />
+              <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+              <g class="ink-fill" transform="translate(32 31)">
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+              </g>
+              <circle cx="32" cy="31" r="1" fill="#06080c" />
+            </svg>
+            <div class="argus-word">ARGUS</div>
+          </div>
+          <div class="lbl">32 PX</div>
+        </div>
+        <div>
+          <div class="lockup size-sm">
+            <svg class="argus-logo" viewBox="0 0 64 64">
+              <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+              <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+              <line class="ink-stroke" x1="11" y1="11" x2="22" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="11" x2="42" y2="22" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="11" y1="53" x2="22" y2="42" stroke-width="var(--logo-stroke)" />
+              <line class="ink-stroke" x1="53" y1="53" x2="42" y2="42" stroke-width="var(--logo-stroke)" />
+              <path class="ink-fill" d="M 22 22 L 42 22 L 42 38 Q 42 42 38 42 L 26 42 Q 22 42 22 38 Z" />
+              <circle cx="32" cy="31" r="6.5" fill="#06080c" />
+              <g class="ink-fill" transform="translate(32 31)">
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(120)" />
+                <path d="M 0 -5.5 L 3.3 2.2 L -3.3 2.2 Z" transform="rotate(240)" />
+              </g>
+              <circle cx="32" cy="31" r="1" fill="#06080c" />
+            </svg>
+            <div class="argus-word">ARGUS</div>
+          </div>
+          <div class="lbl">18 PX · FAVICON</div>
+        </div>
+      </div>
+      <div class="card-foot"><span>D · SCALE</span><span>56 → 18</span></div>
+    </div>
+  </div>
+
+  <div class="hair"></div>
+  <div class="eyebrow">Original three directions</div>
+  <p class="lede" style="margin-top: 6px; margin-bottom: 18px;">Kept for reference and comparison.</p>
+
+  <!-- ── 3 directions ────────────────────────────────────────── -->
+  <div class="grid3">
+
+    <!-- ── A · SENSOR POD ────────────────────────────────────── -->
+    <div class="card gloss">
+      <div class="card-head">
+        <div class="name">Sensor pod.</div>
+        <div class="id">A</div>
+      </div>
+      <div class="card-desc">A small camera body with a single aperture — literal, but tight.</div>
+      <div class="card-stage">
+        <div class="lockup size-xl">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <!-- 4 corner brackets (shared) -->
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <!-- Cables from brackets to the pod corners -->
+            <line class="ink-stroke" x1="11" y1="11" x2="24" y2="24" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="53" y1="11" x2="40" y2="24" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="11" y1="53" x2="24" y2="40" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="53" y1="53" x2="40" y2="40" stroke-width="var(--logo-stroke)" />
+            <!-- Pod body: rounded rect with chamfered bottom (lens housing) -->
+            <path class="ink-fill"
+                  d="M 24 24
+                     L 40 24
+                     L 40 36
+                     Q 40 40 36 40
+                     L 28 40
+                     Q 24 40 24 36
+                     Z" />
+            <!-- Aperture (negative space) -->
+            <circle cx="32" cy="32" r="3.5" fill="#06080c" />
+            <circle class="ink-fill" cx="32" cy="32" r="1.2" />
+          </svg>
+          <div class="col">
+            <div class="argus-word">ARGUS</div>
+            <div class="sub">THERMAL INSPECTION · OMV</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <span>SENSOR POD</span>
+        <span>LITERAL · DEVICE</span>
+      </div>
+    </div>
+
+    <!-- ── B · RETICLE ───────────────────────────────────────── -->
+    <div class="card gloss">
+      <div class="card-head">
+        <div class="name">Reticle.</div>
+        <div class="id">B</div>
+      </div>
+      <div class="card-desc">Survey-scope crosshair — precision, not aggression. Reads as instrumentation.</div>
+      <div class="card-stage">
+        <div class="lockup size-xl">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <!-- 4 corner brackets -->
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <!-- Outer reticle ring -->
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <!-- Inner subtle ring -->
+            <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+            <!-- Crosshair lines — gap in the middle so they read as a reticle, not a target -->
+            <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+            <!-- Center dot -->
+            <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+          </svg>
+          <div class="col">
+            <div class="argus-word">ARGUS</div>
+            <div class="sub">THERMAL INSPECTION · OMV</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <span>RETICLE</span>
+        <span>PRECISION · INSTRUMENT</span>
+      </div>
+    </div>
+
+    <!-- ── C · APERTURE ──────────────────────────────────────── -->
+    <div class="card gloss">
+      <div class="card-head">
+        <div class="name">Aperture.</div>
+        <div class="id">C</div>
+      </div>
+      <div class="card-desc">Three-bladed iris — abstract, geometric, hints at a lens without being one.</div>
+      <div class="card-stage">
+        <div class="lockup size-xl">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <!-- 4 corner brackets -->
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <!-- Outer hexagonal containment -->
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <!-- Three-bladed iris (triangular pinwheel inside the ring) -->
+            <g class="ink-fill" transform="translate(32 32)">
+              <!-- Blade 1 (top) -->
+              <path d="M 0 -10 L 6 4 L -6 4 Z" opacity="0.95" />
+              <!-- Blade 2 (bottom-left) — rotated 120° -->
+              <path d="M 0 -10 L 6 4 L -6 4 Z" transform="rotate(120)" opacity="0.95" />
+              <!-- Blade 3 (bottom-right) — rotated 240° -->
+              <path d="M 0 -10 L 6 4 L -6 4 Z" transform="rotate(240)" opacity="0.95" />
+            </g>
+            <!-- Center dot -->
+            <circle cx="32" cy="32" r="2.2" fill="#06080c" />
+          </svg>
+          <div class="col">
+            <div class="argus-word">ARGUS</div>
+            <div class="sub">THERMAL INSPECTION · OMV</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <span>APERTURE</span>
+        <span>GEOMETRIC · ABSTRACT</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hair"></div>
+
+  <!-- ── Side-by-side icon comparison ────────────────────────── -->
+  <div class="eyebrow">Icon only · 64 × 64</div>
+  <div class="display" style="font-size: 22px; margin-bottom: 18px;">The mark, undressed.</div>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-stage" style="padding: 40px;">
+        <svg class="argus-logo" viewBox="0 0 64 64" style="width: 200px; height: 200px;">
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <line class="ink-stroke" x1="11" y1="11" x2="24" y2="24" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="11" x2="40" y2="24" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="11" y1="53" x2="24" y2="40" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="53" y1="53" x2="40" y2="40" stroke-width="var(--logo-stroke)" />
+          <path class="ink-fill" d="M 24 24 L 40 24 L 40 36 Q 40 40 36 40 L 28 40 Q 24 40 24 36 Z" />
+          <circle cx="32" cy="32" r="3.5" fill="#06080c" />
+          <circle class="ink-fill" cx="32" cy="32" r="1.2" />
+        </svg>
+      </div>
+      <div class="card-foot"><span>A · SENSOR POD</span><span>ICON</span></div>
+    </div>
+    <div class="card">
+      <div class="card-stage" style="padding: 40px;">
+        <svg class="argus-logo" viewBox="0 0 64 64" style="width: 200px; height: 200px;">
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+          <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+          <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+          <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+          <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+        </svg>
+      </div>
+      <div class="card-foot"><span>B · RETICLE</span><span>ICON</span></div>
+    </div>
+    <div class="card">
+      <div class="card-stage" style="padding: 40px;">
+        <svg class="argus-logo" viewBox="0 0 64 64" style="width: 200px; height: 200px;">
+          <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6"   stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+          <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+          <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+          <g class="ink-fill" transform="translate(32 32)">
+            <path d="M 0 -10 L 6 4 L -6 4 Z" opacity="0.95" />
+            <path d="M 0 -10 L 6 4 L -6 4 Z" transform="rotate(120)" opacity="0.95" />
+            <path d="M 0 -10 L 6 4 L -6 4 Z" transform="rotate(240)" opacity="0.95" />
+          </g>
+          <circle cx="32" cy="32" r="2.2" fill="#06080c" />
+        </svg>
+      </div>
+      <div class="card-foot"><span>C · APERTURE</span><span>ICON</span></div>
+    </div>
+  </div>
+
+  <div class="hair"></div>
+
+  <!-- ── Scale ladder (B / Reticle by default, since it's the most "military-precision") ── -->
+  <div class="eyebrow">Scale ladder · option B preview</div>
+  <div class="display" style="font-size: 22px; margin-bottom: 12px;">How they hold at small sizes.</div>
+
+  <div class="card">
+    <div class="scale-row">
+      <div>
+        <div class="lockup size-xl">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+            <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+          </svg>
+          <div class="argus-word">ARGUS</div>
+        </div>
+        <div class="lbl">80 PX</div>
+      </div>
+      <div>
+        <div class="lockup size-lg">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+            <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+          </svg>
+          <div class="argus-word">ARGUS</div>
+        </div>
+        <div class="lbl">56 PX</div>
+      </div>
+      <div>
+        <div class="lockup size-md">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+            <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+          </svg>
+          <div class="argus-word">ARGUS</div>
+        </div>
+        <div class="lbl">32 PX · UI HEADER</div>
+      </div>
+      <div>
+        <div class="lockup size-sm">
+          <svg class="argus-logo" viewBox="0 0 64 64">
+            <path class="bracket" d="M 6 6 L 6 14 M 6 6 L 14 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 6 L 58 14 M 58 6 L 50 6" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 6 58 L 6 50 M 6 58 L 14 58" stroke-width="var(--logo-bracket-width)" />
+            <path class="bracket" d="M 58 58 L 58 50 M 58 58 L 50 58" stroke-width="var(--logo-bracket-width)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="12" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-stroke" cx="32" cy="32" r="6" stroke-width="1" opacity="0.55" />
+            <line class="ink-stroke" x1="32" y1="14" x2="32" y2="26" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="32" y1="38" x2="32" y2="50" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="14" y1="32" x2="26" y2="32" stroke-width="var(--logo-stroke)" />
+            <line class="ink-stroke" x1="38" y1="32" x2="50" y2="32" stroke-width="var(--logo-stroke)" />
+            <circle class="ink-fill" cx="32" cy="32" r="1.4" />
+          </svg>
+          <div class="argus-word">ARGUS</div>
+        </div>
+        <div class="lbl">18 PX · FAVICON</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 60px;"></div>
+
+  <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #7a7468; line-height: 1.9; letter-spacing: 0.04em;">
+    <div style="color: #bdc1c9; margin-bottom: 8px;">// Tell me which direction (A, B, or C) to refine, or if any element should be combined.</div>
+    <div>A · Sensor pod — cables from brackets to a compact body with an aperture. Most literal.</div>
+    <div>B · Reticle — survey crosshair with gapped lines + center dot. Most "instrument."</div>
+    <div>C · Aperture — three-bladed iris inside a containing circle. Most abstract / geometric.</div>
+    <div style="color: #bdc1c9; margin-top: 12px;">D · Pod with iris — A pod body + cables + C three-bladed iris as the sensor. The combined version, scrolled above.</div>
+  </div>
+</div>
+
+</body>
+</html>

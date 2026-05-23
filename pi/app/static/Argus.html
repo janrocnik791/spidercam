@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Argus — Thermal Inspection</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
+<style>
+  html, body { margin: 0; padding: 0; background: #000; height: 100vh; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #design { width: 1440px; height: 900px; transform-origin: center center; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.85); }
+  }
+  input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: transparent; cursor: pointer; }
+  input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; background: transparent; border: 0; cursor: pointer; }
+  /* Custom thin scrollbar for dark theme */
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+  select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'><path d='M1 1l4 4 4-4' stroke='%238a8f99' stroke-width='1.4' stroke-linecap='square'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px !important; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="design"><div id="root"></div></div></div>
+
+<script>
+  // Scale 1440×900 to fit viewport, letterboxed
+  function fit() {
+    const s = Math.min(window.innerWidth / 1440, window.innerHeight / 900);
+    document.getElementById('design').style.transform = `scale(${s})`;
+  }
+  window.addEventListener('resize', fit);
+  fit();
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Shared components (icons, ThermalFeed, HistoryThumb, CoverageMap) -->
+<script type="text/babel" src="shared.jsx"></script>
+<!-- V6 data + components -->
+<script type="text/babel" src="v6-data.jsx"></script>
+<script type="text/babel" src="v6-argus.jsx"></script>
+<script type="text/babel" src="v6-history-detail.jsx"></script>
+
+<script type="text/babel">
+  ReactDOM.createRoot(document.getElementById('root')).render(<V6Argus />);
+</script>
+</body>
+</html>

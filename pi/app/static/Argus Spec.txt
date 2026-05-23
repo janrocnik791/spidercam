@@ -1,0 +1,944 @@
+================================================================================
+  ARGUS — FUNCTIONAL SPECIFICATION
+  Companion document for Argus.html
+  Hand-off for backend implementation (Claude Code)
+================================================================================
+
+PURPOSE
+-------
+Argus.html is the operator interface for a cable-driven SpiderCam thermal
+inspection gantry deployed at OMV. It runs in a browser on a desktop or
+tablet over WiFi. This document explains what every piece of the interface
+does, what data it needs, and how it should behave when the backend wires
+real hardware and detection results into it.
+
+The HTML file is the source of truth for layout, visuals, and component
+behavior. This text file is the source of truth for FUNCTIONALITY — what
+each control commands, what each readout displays, what events the UI
+expects to receive, and how operator interactions should affect the
+gantry, the scan, and the data flow.
+
+The detection pipeline (frame capture, difference detection, hotspot
+classification) lives upstream of the UI. By the time data reaches Argus,
+each detection is already classified by priority and has its frames saved.
+
+
+--------------------------------------------------------------------------------
+  1. SYSTEM CONTEXT
+--------------------------------------------------------------------------------
+
+Hardware:
+  - ESP32       Motor controller. Drives the 4 cables. Receives motion
+                commands. Reports motor state, position, cable tension.
+  - Raspberry Pi  Hosts the thermal camera + optical camera. Streams video.
+                Runs the difference detection. Hosts this web server.
+  - Argus UI    Browser client. Connects to the Pi over WiFi.
+
+Software shape (suggested):
+  - Backend on the Pi: web server + WebSocket (or equivalent live transport)
+    + motor command bridge to the ESP32.
+  - Detection pipeline: runs on the Pi, emits classified detection events
+    to the UI when something is found.
+  - Argus.html: single-page client, served by the Pi, scales 1440x900 to
+    fit the viewport.
+
+Modes:
+  - AUTONOMOUS   Default mode. Gantry follows a planned serpentine scan
+                 path. Detection pipeline runs continuously.
+  - MANUAL       Operator controls the gantry by hand. Autonomous scan
+                 is paused while in this mode.
+  - PAUSED       Autonomous scan is held but operator has not switched
+                 to manual.
+  - E-STOP       Hard halt. See section 7.
+
+The UI never blocks autonomous on its own. State changes only happen when
+the operator switches tabs, opens an alarm response, or presses controls.
+
+
+--------------------------------------------------------------------------------
+  2. SCREEN MAP
+--------------------------------------------------------------------------------
+
+The 1440x900 canvas is divided into 4 functional regions, top to bottom,
+left to right:
+
+  +---------------------------------------------------------------+
+  | A. HEADER BAR (52 px tall)                                    |
+  |    Argus mark | mission line | status icons | E-STOP          |
+  +-------------------------------------------+-------------------+
+  |                                           | C. RIGHT RAIL     |
+  |  B. HERO THERMAL FEED                     |  (360 px wide)    |
+  |     (left side, fills available space)    |  - Coverage map   |
+  |     Live thermal/optical image            |  - Tab toggle     |
+  |     HUD overlays                          |    INSPECTION /   |
+  |                                           |    MANUAL         |
+  |                                           |  - Active tab     |
+  |                                           |    content        |
+  +-------------------------------------------+-------------------+
+  | D. HISTORY STRIP (180 px tall)                                |
+  |    "Detections" header + VIEW ALL | row of CRITICAL/HIGH cards|
+  |    | "+N MORE" chip                                           |
+  +---------------------------------------------------------------+
+
+Overlays (drawn over everything when active):
+  - ALARM MODAL              centered, dims background
+  - HISTORY DETAIL PAGE      full overlay slide-up
+  - (nothing else covers the main screen)
+
+
+--------------------------------------------------------------------------------
+  3. REGION-BY-REGION FUNCTIONAL SPEC
+--------------------------------------------------------------------------------
+
+================================================================================
+  A. HEADER BAR
+================================================================================
+
+  Visual: thin dark bar with brand on the left, mission line center,
+          status icons + large red E-STOP on the right.
+
+A.1  ARGUS LOGO + WORDMARK
+     Function: brand identity, decorative. No interaction.
+     Data: none.
+
+A.2  MISSION LINE (center)
+     Function: identifies the current scan job.
+     Data needed (live or set when scan starts):
+       - mission_name        e.g. "OMV-A · Gas Distribution Hub 4"
+       - session_id          integer that increments per scan session
+       - current_time_utc    updated every second
+     Updates: every second for the clock, immediately on session change.
+
+A.3  STATUS ICONS (right side, 4 of them)
+     Function: at-a-glance system health. Each icon = one subsystem.
+     Hovering shows a tooltip with subsystem name + detail.
+     The four subsystems and what each represents:
+       - ESP32          Motor controller link.
+                        Detail line example: "192.168.4.1 · -52 dBm"
+       - Raspberry Pi   Camera stream + server.
+                        Detail line example: "29.7 fps stream · -42 dBm"
+       - Motors         All 4 cable motors.
+                        Detail line example: "4 cables · 0.42 A"
+       - IR Sensor      Thermal sensor health.
+                        Detail line example: "Calibrating · 24.0°C ambient"
+     Each has a state dot drawn over the icon. States:
+       OK         green     subsystem healthy
+       WARN       amber     degraded but operational (calibrating, weak
+                            signal, etc.)
+       DANGER     red       failed, disconnected
+     Polling: state should refresh at least every 2 s. Tooltip detail can
+     update less frequently but should be current when shown.
+
+A.4  E-STOP BUTTON (red, hangs below the header bar)
+     Function: triggers an emergency halt of all motion.
+     Behavior on click:
+       1. Immediately command the ESP32 to stop all motor output.
+       2. Mark the system state as E-STOPPED (see section 7).
+       3. Autonomous scan halts. Any current motion command is aborted.
+       4. UI should reflect E-STOPPED state across all status indicators.
+     This is a HARD STOP. Cable tension is held (motors brake, not free
+     spool). Not a graceful "finish current step" — the gantry should
+     stop as fast as the motor controller safely allows.
+     Recovery: the operator must explicitly release E-STOP (mechanism
+     for that is not in the current UI — backend can decide whether a
+     simple click, a hold, or a confirm dialog is required, but the
+     UI screen needs to reflect that state until released).
+
+
+================================================================================
+  B. HERO THERMAL FEED
+================================================================================
+
+  Visual: large live video feed (thermal by default, switchable to optical),
+          with HUD overlays drawn on top.
+
+B.1  THE FEED ITSELF
+     Function: live video of whatever the camera is pointing at.
+     Data: MJPEG stream, WebRTC, or equivalent continuous frame source.
+     Two channels available:
+       - thermal (default)   IR sensor, iron palette
+       - normal              visible-light optical camera
+     Target frame rate: ~30 fps. The detection pipeline is documented
+     as 4 fps; the displayed feed should run as smooth as the source
+     allows, independent of detection cadence.
+
+B.2  MODE TOGGLE (center-top of feed)
+     Function: switches the displayed channel between THERMAL and NORMAL.
+     Behavior: clicking either button switches the channel on the next
+     frame. Should NOT pause the scan or affect motor control.
+
+B.3  ANOMALY BADGE (top-right of feed)
+     Function: live indicator that the current frame contains a detected
+     hotspot. Shown only when the detection pipeline currently flags the
+     visible region.
+     Visibility rules:
+       - Visible while a hotspot is present in the current frame.
+       - Hidden when the camera moves off the hotspot.
+     Data needed: current max temperature in the frame.
+     This is NOT the same as an alarm — it's a passive readout. Even an
+     "acknowledged" or "resolved" detection that the camera passes over
+     again should re-light this badge.
+
+B.4  TEMP TAPE (top-left of feed)
+     Function: scalar readouts of the current frame:
+       - MIN temperature in frame
+       - AVG temperature in frame
+       - MAX temperature in frame (highlighted in warm color)
+       - iron palette gradient with min/max labels
+     Update cadence: one update per displayed frame (or throttled to
+     ~10 Hz to avoid flicker — pick a rate that reads well).
+
+B.5  PALETTE LEGEND
+     The temp tape doubles as a palette legend. The iron palette gradient
+     and its endpoints (12°C and 78°C in the demo) should match the
+     actual color mapping the thermal feed is using. If the backend
+     auto-ranges the palette per frame, the endpoints in the legend
+     must update with it.
+
+B.6  POSITION BREADCRUMB (bottom-left of feed)
+     Function: current camera head position in millimeters.
+     Format: "X 638  Y 472  Z 1280 mm"
+     Data: live X/Y/Z from the ESP32 motor encoders.
+     Update cadence: at least 10 Hz so motion feels smooth.
+
+B.7  REC INDICATOR (bottom-right of feed)
+     Function: confirms the feed is being recorded and shows the
+     live recording clock + current stream frame rate.
+     Format: pulsing red dot + "REC · HH:MM:SS" + frame rate
+             (e.g. "REC · 14:22:08   29.7 fps")
+     Data needed:
+       - recording_clock   HH:MM:SS, updated every second
+       - stream_fps        current MJPEG/WebRTC frame rate from
+                           the Pi
+     The dot pulses continuously while recording. If recording
+     is ever disabled, this indicator should be hidden (or shown
+     with a clearly different non-pulsing style).
+
+B.8  CORNER BRACKETS (overlay on all four corners of the feed)
+     Function: decorative HUD framing. Hairline L-shaped brackets
+     in each corner of the feed, drawn at low opacity, signal that
+     the operator is looking through an instrument viewport.
+     No interaction, no data. Purely visual chrome.
+
+
+================================================================================
+  C. RIGHT RAIL (360 px wide column)
+================================================================================
+
+  Visual: dark column on the right with three stacked sections:
+    1. Coverage map      (always visible)
+    2. Tab toggle        INSPECTION | MANUAL
+    3. Tab content       (one of two panels)
+
+C.1  COVERAGE MAP
+     Function: top-down 2D map of the area being scanned. Visualizes
+     where the gantry has been, where it currently is, and where
+     detections have happened.
+     Layout: rectangular plant area, with the scan progress visualized
+     as a "swept region" — filled translucent rows that grow as the
+     serpentine path progresses. Older rows fade slightly so the
+     freshest path is brightest.
+     Pins on the map:
+       - Current head position    blue pulsing dot
+       - Each detection           colored dot by priority
+                                  (critical red, high orange,
+                                   medium amber, low blue)
+     Hover behavior: hovering an anomaly dot pops a tooltip with
+     a tiny diff thumbnail + detection ID + temp + pass + time.
+     Data needed:
+       - plant dimensions     e.g. 800 x 800 mm (the title bar of
+                              the map shows this)
+       - serpentine path progress  fraction 0..1 (used to fill
+                                   swept rows)
+       - current head normalized position    {x, y} 0..1 within plant
+       - array of detection pins             {id, x, y, priority,
+                                              temp, pass, time}
+     Below the map: three mini stats
+       - SWEPT       progress % (matches inspection panel)
+       - FLAGGED     count of detections this session
+       - ETA         estimated time remaining (string MM:SS)
+
+C.2  TAB TOGGLE (under the coverage map)
+     Two buttons: INSPECTION (default) and MANUAL.
+     The active tab is underlined with a bright accent line.
+     Switching to MANUAL:
+       - Immediately pauses the autonomous scan.
+       - The right-rail content swaps.
+       - See section 6 for the manual + alarm interaction.
+     Switching back to INSPECTION (or pressing RESUME AUTONOMOUS
+     in the manual panel):
+       - Resumes the autonomous scan from where it was paused.
+
+C.3  INSPECTION TAB CONTENT
+     Shown when active. Top to bottom:
+
+     C.3.1 STATUS HEADER
+           Label "INSPECTION" on the left.
+           On the right: a pill with state dot + text:
+              AUTONOMOUS (green dot)    scan is running
+              PAUSED (amber dot)        scan is held
+           This pill is the ground truth — if the operator is in the
+           middle of an alarm or has switched to MANUAL, the pill
+           shows PAUSED.
+
+     C.3.2 TITLE LINE
+           Uppercase Helvetica label reflecting state:
+              "SCAN ACTIVE"   when running
+              "STANDING BY"   when paused
+           Below: pass and cell counter, e.g. "PASS 04 OF 12 · CELL 40 OF 96"
+           Data needed: current_pass, total_passes, current_cell, total_cells
+
+     C.3.3 PROGRESS BIG NUMBER
+           Large display of progress percent (0–100).
+           Same value drives the progress bar below it.
+           Right of it: ELAPSED and ETA (MM:SS each).
+           Data needed:
+             - progress              float 0..1
+             - elapsed_seconds       integer
+             - eta_seconds           integer
+           Progress bar is just the same value as a bar.
+
+     C.3.4 LIVE READOUT GRID (4 columns)
+           X / Y / Z position + flagged anomaly count.
+           X, Y, Z mirror the position breadcrumb on the feed.
+           ANOM is the count of detections this session that are
+           still NEW or ACKNOWLEDGED (not resolved or false-positive).
+
+     C.3.5 RECENT ANOMALIES LIST
+           Up to ~2 of the most recent CRITICAL/HIGH detections,
+           displayed as rows with ID, temp, coordinates, time, pass.
+           Clicking a row opens the history detail page focused on
+           that detection.
+
+     C.3.6 ACTION BUTTONS (bottom)
+           PAUSE / RESUME    toggles autonomous scan
+           STOP              ends the current scan session
+                             (different from E-STOP — STOP is a
+                             clean shutdown of the current mission,
+                             not a hardware halt)
+
+C.4  MANUAL TAB CONTENT
+     Shown when MANUAL is active. Switching here ALWAYS pauses
+     autonomous (no exceptions).
+
+     C.4.1 STATUS LINE
+           Label "CONTROL" on the left.
+           On the right: "AUTONOMOUS PAUSED" amber pill.
+
+     C.4.2 HINT LINE
+           "TAP TO JOG · HOLD FOR CONTINUOUS" — explains the input
+           model. This is purely informational.
+
+     C.4.3 POSITION READOUT
+           One inline row showing X / Y / Z in mm.
+           Same data as the breadcrumb and inspection readout.
+
+     C.4.4 X/Y CONTROL PAD (3x3 grid)
+           Layout:
+             .   UP   .
+             LEFT  HOME  RIGHT
+             .   DOWN  .
+           Each direction button (UP/DOWN/LEFT/RIGHT):
+             - On tap (press + release < ~150 ms): jog one step
+               in that direction at the current speed.
+             - On hold (press without release): continuously
+               move while held, stop on release.
+           HOME button (the center, shown with a house icon):
+             - Sends the gantry to the home position (origin).
+             - This is a goto-position command, not a jog.
+           Jog step size: backend's choice — UI does not currently
+           expose a step-size selector. Recommend a fixed sensible
+           value (e.g. 10 mm per step).
+
+     C.4.5 Z COLUMN (right of the X/Y pad)
+           "Z UP" label, up button, vertical Z position bar,
+           down button, "Z DN" label.
+           Up/down buttons behave like the X/Y direction buttons
+           (tap = step, hold = continuous).
+           The vertical bar shows current Z height as a fill from
+           bottom up, with a draggable handle:
+             - The bar is BOTH a readout (always reflects current
+               actual Z) and an input (drag the handle to command
+               an absolute Z target).
+             - Dragging the handle commands a goto-Z move.
+           Z range mapping: 0 % = lowest Z, 100 % = highest Z.
+           The backend defines the actual mm range and the UI
+           scales accordingly.
+
+     C.4.6 SPEED SLIDER
+           A single 0–100 slider that sets the motor speed for
+           jog and goto commands. The value applies to all
+           subsequent motion commands; it is a setting, not a
+           per-command parameter.
+
+     C.4.7 RESUME AUTONOMOUS BUTTON
+           Closes the manual tab, switches back to INSPECTION,
+           and resumes the autonomous scan.
+
+
+================================================================================
+  D. HISTORY STRIP
+================================================================================
+
+  Visual: bottom band 180 px tall. Shows the most important
+  detections at a glance plus a way to open the full archive.
+
+D.1  HEADER ROW
+     Left: "DETECTIONS" label, then a Helvetica count "N LEAKS TODAY",
+     then a mono note "· SHOWING CRITICAL + HIGH".
+     Right: a button "VIEW ALL · N" that opens the history detail
+     page with no filter (shows all detections).
+     Data needed: total detections this session (today), and total
+     detections across all loaded data.
+
+D.2  DETECTION CARDS (horizontal, scrollable)
+     Each card shows:
+       - Left edge accent border in the priority color
+         (this replaces a separate priority dot)
+       - Priority label (CRITICAL or HIGH)
+       - Current max temp at detection time
+       - PAST and CURRENT thumbnail (side by side)
+         · PAST: the same frame from the previous pass (no anomaly)
+         · CURRENT: the frame from the pass that flagged it
+       - Area name (e.g. "East riser · Sector 4")
+       - Time
+     The card does NOT show the detection ID or a status pill — the
+     accent border carries the priority and the card stays compact.
+     Status and ID are visible in the alarm modal, the recent-
+     anomalies list, and the history detail page.
+     Click a card: opens the history detail page focused on that
+     detection.
+     Sort order: most recent first.
+     What appears here: ONLY detections with priority CRITICAL or
+     HIGH. MEDIUM and LOW are summarized in the "+N more" chip.
+
+D.3  "+N MORE" CHIP (after the cards)
+     Dashed-border chip showing the count of MEDIUM + LOW
+     detections that are not in the strip.
+     Click: opens the history detail page with no filter applied
+     (the operator will see all priorities listed and can filter
+     from there).
+     If there are 0 medium/low detections, this chip is hidden.
+
+D.4  EDGE FADE (right edge of the strip)
+     Visual cue that more content exists to the right if the cards
+     overflow horizontally. No interaction.
+
+
+--------------------------------------------------------------------------------
+  4. ALARM MODAL  (overlay)
+--------------------------------------------------------------------------------
+
+  Visual: centered card over a dimmed, blurred background. Glowing
+  border in the priority color. Cannot be missed.
+
+  When does it fire?
+    - Triggered by a NEW detection arriving with priority CRITICAL
+      or HIGH.
+    - MEDIUM and LOW detections DO NOT fire an alarm — they appear
+      silently in the history (see section 5 for re-detection rules).
+
+  Behavior while open:
+    - Autonomous scan is paused (the "AUTONOMOUS" pill in the
+      inspection panel flips to PAUSED while the alarm is up).
+    - The modal is blocking — the operator must respond.
+    - Background interaction is dimmed and blurred; clicking outside
+      the modal does NOT dismiss it. The only way out is via the
+      modal's action buttons.
+
+  Modal content (per detection):
+    - Priority label and pulsing color dot
+    - Detection ID, pass, time
+    - Hotspot thumbnail (current frame)
+    - Temperature (large number) + delta from ambient
+    - Location coords (X, Y mm)
+    - Confidence percent
+    - Area name
+    - Current status ("NEW")
+    - Notice strip: "AUTONOMOUS SCAN PAUSED · AWAITING ACKNOWLEDGEMENT"
+
+  Action buttons:
+
+    CRITICAL detection — two buttons:
+      ACKNOWLEDGE
+        - Marks the detection status as ACKNOWLEDGED.
+        - Closes the alarm.
+        - Autonomous scan resumes from the paused position.
+
+      SWITCH TO MANUAL
+        - Marks the detection status as ACKNOWLEDGED.
+        - Closes the alarm.
+        - The right-rail tab switches to MANUAL.
+        - Autonomous remains paused (manual is now active).
+        - Operator now has direct control of the gantry to inspect
+          the area more closely.
+
+    HIGH detection — one button:
+      MARK AS SEEN
+        - Marks the detection status as ACKNOWLEDGED.
+        - Closes the alarm.
+        - Autonomous scan resumes.
+
+      (HIGH also has a small × in the corner, identical to MARK AS SEEN.)
+
+  E-STOP while alarm is open:
+    The E-STOP button remains usable even with the alarm modal up.
+    Pressing it transitions the system to E-STOPPED state. The alarm
+    can still be dismissed afterward; dismissing it should NOT resume
+    autonomous (because the system is e-stopped). See section 7.
+
+
+--------------------------------------------------------------------------------
+  5. DETECTION DATA MODEL
+--------------------------------------------------------------------------------
+
+  Each detection is a record with these fields. The UI consumes them
+  as-is — priority is already classified, frames are already saved,
+  coordinates are already computed.
+
+    id            Detection identifier. Format suggestion:
+                  "L-{session_id:03d}-{detection_index:03d}"
+                  e.g. "L-047-012"
+
+    priority      One of: "critical" | "high" | "medium" | "low"
+                  CRITICAL and HIGH trigger alarm modals.
+                  MEDIUM and LOW are silent (history only).
+
+    status        One of: "new" | "acknowledged" | "resolved"
+                                                | "false_positive"
+                  Initial value: "new"
+                  Transitions are driven by operator actions in the
+                  alarm modal and the history detail page.
+
+    pass          String, the scan pass number this came from,
+                  e.g. "012"
+
+    time          String "HH:MM" of the detection
+    date          String "YYYY-MM-DD" of the detection
+
+    temp          Display string with unit, e.g. "64.2°C"
+    tempVal       Numeric temperature in degrees Celsius
+    delta         Display string with sign, e.g. "+28.6°C"
+                  (above ambient or above local baseline)
+    deltaVal      Numeric delta in degrees Celsius
+    confidence    Float 0..1 (detection pipeline's certainty)
+
+    location      Absolute gantry coordinates at detection time
+                  { x: mm, y: mm, z: mm }
+    locNorm       Normalized position for the coverage map pin
+                  { x: 0..1, y: 0..1 }
+                  (x and y are mapped to the plant rectangle)
+
+    area          Human-readable area name, e.g.
+                  "East riser · Sector 4"
+    mission       Mission identifier (used in the detail page filter)
+
+    notes         Free-text notes. Can be empty initially.
+                  Used in the alarm modal and detail page.
+
+  Frame storage:
+    The UI assumes each detection has at least these saved frames
+    available to render:
+      - past frame      raw thermal frame from the previous pass over
+                        the same cell (no anomaly visible)
+      - current frame   raw thermal frame from the pass that detected
+                        the anomaly (anomaly visible)
+      - difference      diff/delta visualization of past vs current
+    The UI renders thumbnails of these inline. The detection record
+    should expose URLs or IDs that can be used to fetch the frames.
+
+  Detection arrival event:
+    When a new detection arrives from the pipeline, the UI needs to:
+      1. Add it to the in-memory detection list.
+      2. Update the history strip (if it qualifies as CRITICAL/HIGH).
+      3. Update the coverage map pin.
+      4. Update the recent-anomalies list in the inspection panel.
+      5. If priority is CRITICAL or HIGH, open the alarm modal.
+
+  Re-detection of an already-acknowledged area:
+    If the gantry passes over the same area again and the pipeline
+    flags it again, the SECOND event is a new detection record with
+    a new id and status "new". It is NOT a continuation of the older
+    record. Treat it as new — it will fire its own alarm if it is
+    CRITICAL or HIGH.
+    Rationale: the pipeline classifies each pass independently. The
+    persistence (the leak is still there) is implicit in the fact
+    that multiple records exist at the same location. The detail
+    page already shows the same physical location with multiple pins
+    on its map.
+    Behavior: the previously acknowledged record stays ACKNOWLEDGED.
+    The new record is NEW until the operator deals with it.
+
+
+--------------------------------------------------------------------------------
+  6. INTERACTION FLOWS
+--------------------------------------------------------------------------------
+
+  This section walks through the most important sequences end to end.
+
+================================================================================
+  FLOW 1 — Normal autonomous scan (steady state)
+================================================================================
+
+  Pre-conditions:
+    - Pi and ESP32 are connected (status icons green).
+    - Mission has been started.
+    - Operator has not switched tabs.
+
+  Steady-state behavior:
+    1. ESP32 drives the gantry along the serpentine path.
+    2. Pi captures thermal frames at ~4 fps and streams the live feed
+       to the UI at the higher display frame rate.
+    3. Pi position pushes update X/Y/Z to the UI ~10 Hz.
+    4. Coverage map fills as the path progresses.
+    5. Progress %, elapsed, ETA update continuously.
+    6. The detection pipeline runs on every captured frame.
+    7. When the pipeline finds nothing, the UI shows no new events.
+
+  No operator action required.
+
+
+================================================================================
+  FLOW 2 — Detection arrives, CRITICAL priority
+================================================================================
+
+  Pre-conditions: Flow 1 in progress.
+
+  Sequence:
+    1. Detection pipeline flags a hotspot, classifies it as CRITICAL,
+       saves past/current/diff frames, and emits a detection event.
+    2. The event reaches the UI.
+    3. The UI immediately:
+         a. Adds the detection to the list.
+         b. Inserts a card at the front of the history strip.
+         c. Drops a red pin on the coverage map.
+         d. Adds it to the recent-anomalies list in inspection.
+         e. Opens the alarm modal with the detection's data.
+         f. Pauses the autonomous scan.
+         g. Flips the inspection status pill to PAUSED.
+    4. The gantry should stop in place (or finish its current motion
+       segment safely) while the alarm is up. The exact "stop now vs.
+       finish step" is the backend's call — the UI just shows PAUSED.
+    5. Operator chooses one of:
+         - ACKNOWLEDGE
+             status -> "acknowledged"
+             alarm closes, autonomous resumes from the paused position
+         - SWITCH TO MANUAL
+             status -> "acknowledged"
+             alarm closes, right rail switches to MANUAL tab
+             autonomous remains paused
+             operator can now jog the gantry to inspect
+    6. The detection card in the history strip updates its status pill
+       (NEW becomes ACKNOWLEDGED).
+
+
+================================================================================
+  FLOW 3 — Detection arrives, HIGH priority
+================================================================================
+
+  Identical to flow 2 except:
+    - Alarm modal shows a single MARK AS SEEN button (and a × close).
+    - No SWITCH TO MANUAL option (HIGH is not severe enough to
+      warrant interrupting the scan for closer inspection by default;
+      the operator can still switch manually if they want).
+    - MARK AS SEEN sets status to "acknowledged", closes the modal,
+      resumes autonomous.
+
+
+================================================================================
+  FLOW 4 — Detection arrives, MEDIUM or LOW priority
+================================================================================
+
+  No alarm. Sequence:
+    1. UI adds the detection to the list.
+    2. Coverage map gets a pin (amber for medium, blue for low).
+    3. The history strip does NOT show MEDIUM/LOW cards; instead,
+       the "+N more" chip count goes up by one.
+    4. The recent-anomalies list (inspection panel) does NOT include
+       medium/low.
+    5. Autonomous scan is NOT paused.
+    6. Operator can review medium/low detections only by opening the
+       history detail page.
+
+
+================================================================================
+  FLOW 5 — Operator switches to MANUAL during autonomous
+================================================================================
+
+  Trigger: operator clicks the MANUAL tab in the right rail (no alarm
+  currently up).
+
+  Sequence:
+    1. Autonomous scan pauses immediately.
+    2. The inspection panel's status pill would flip to PAUSED.
+    3. The right rail content swaps to the manual panel.
+    4. The gantry comes to rest at its current location.
+    5. Operator uses the jog pad, Z slider, or speed to move.
+    6. While manual is active, the autonomous scan progress does NOT
+       advance — neither the percentage, elapsed, ETA, nor swept
+       region grow.
+    7. The coverage map's head pin continues to follow the gantry's
+       real position (so it does move as the operator jogs).
+    8. When the operator clicks RESUME AUTONOMOUS (in the manual
+       panel) or switches back to the INSPECTION tab:
+         - The gantry must return to the position where autonomous
+           was paused before resuming the planned path
+           (recommended behavior — the backend decides whether to
+           move-then-resume or to re-plan from the current position).
+         - Autonomous scan resumes.
+
+
+================================================================================
+  FLOW 6 — Alarm arrives WHILE operator is in MANUAL
+================================================================================
+
+  This is the simultaneous case the spec calls out explicitly.
+
+  Pre-conditions: operator is in the MANUAL tab, has been jogging
+  the gantry. Autonomous is paused. A new detection arrives with
+  priority CRITICAL or HIGH (possibly because of the operator's own
+  manual movement bringing them over a new hotspot, possibly from
+  background processing of buffered frames).
+
+  Sequence:
+    1. The alarm modal opens over everything.
+    2. The right rail's manual panel becomes inaccessible (covered
+       by the dimmed backdrop).
+    3. The gantry SHOULD stop in place. If the operator was holding
+       a jog button when the alarm appeared, that motion ends
+       immediately (the modal capturing focus also acts as a
+       button release).
+    4. Detection card is added to history strip, pin to map, etc.
+    5. Operator responds:
+         - ACKNOWLEDGE (CRITICAL) or MARK AS SEEN (HIGH):
+             alarm closes
+             system returns to MANUAL (not autonomous), since the
+             operator was already in manual when the alarm fired
+             autonomous remains paused
+         - SWITCH TO MANUAL (CRITICAL only):
+             alarm closes
+             system stays in MANUAL (it already was)
+             same effect as ACKNOWLEDGE for this case
+    6. The operator continues working in manual until they choose
+       to RESUME AUTONOMOUS.
+
+  Why this design: switching to manual is the operator's deliberate
+  choice. An alarm should not yank them back into autonomous
+  unexpectedly.
+
+
+================================================================================
+  FLOW 7 — Operator opens history detail page
+================================================================================
+
+  Triggers:
+    - Clicking "VIEW ALL" in the history strip.
+    - Clicking a detection card in the history strip.
+    - Clicking a row in the recent-anomalies list.
+    - Clicking the "+N more" chip.
+
+  Sequence:
+    1. A full-screen overlay slides up over the main UI.
+    2. The page header has a "BACK TO LIVE" button on the left,
+       the title "All leaks, every priority.", and a count
+       "N / M SHOWN" on the right (filtered/total).
+    3. Filter bar exposes:
+         PRIORITY    ALL / CRITICAL / HIGH / MEDIUM / LOW
+                     (with counts shown on each pill)
+         STATUS      ALL / NEW / ACKNOWLEDGED / RESOLVED / FALSE POSITIVE
+         DATE        ALL TIME / TODAY
+         MISSION     dropdown of all missions in the data
+    4. Filters are AND-combined. Changing any filter immediately
+       re-renders the list.
+    5. The list (left, 360 px wide) shows each detection that passes
+       the filters, sorted by priority (critical first), then by
+       date/time descending.
+    6. Selecting a list row shows the detail view on the right:
+         - Priority + status pills
+         - Detection ID (large)
+         - Three frame thumbnails: PAST, CURRENT, DIFFERENCE
+         - Metadata grid: temperature, delta, confidence, status,
+           location X/Y/Z, pass, area, mission, date, time
+         - Plant location map showing ALL detections (this one
+           highlighted), with sector gridlines
+         - Notes block (free text)
+         - Action buttons:
+             ACKNOWLEDGE       (if status is "new")
+             MARK RESOLVED     (if status is not "resolved")
+             FALSE POSITIVE    (if status is not "false_positive")
+             SWITCH TO MANUAL  (closes the detail page and switches
+                                the right rail to manual; intended
+                                for going to inspect this detection)
+    7. BACK TO LIVE closes the overlay and returns to the main UI.
+       The right-rail tab state is preserved.
+
+
+================================================================================
+  FLOW 8 — Operator marks detection status
+================================================================================
+
+  From either the alarm modal or the history detail page:
+    NEW             default state when a detection arrives.
+    ACKNOWLEDGED    operator has seen it.
+                    Persists until manually changed.
+    RESOLVED        the leak has been physically resolved (e.g.
+                    maintenance fixed it). Implies the operator
+                    has confirmed off-system.
+    FALSE_POSITIVE  not a real leak.
+                    Affects future detections at the same location?
+                    Out of scope for the UI — the pipeline decides
+                    whether to dampen detections at the same spot.
+                    The UI only stores the label.
+
+  Acknowledging a detection does NOT prevent future alarms if the
+  pipeline detects the same area again on a later pass. See
+  section 5 (re-detection).
+
+
+--------------------------------------------------------------------------------
+  7. E-STOP BEHAVIOR
+--------------------------------------------------------------------------------
+
+  E-STOP is the hardware safety button. It is NOT a graceful stop.
+
+  Press behavior:
+    1. The ESP32 should immediately stop all motor output. Motors
+       should hold position (brake), not free-spool. Cable tension
+       must be maintained so the camera does not drop or swing.
+    2. Any in-flight motion command is aborted.
+    3. Autonomous scan, if running, halts. The session is interrupted.
+    4. Manual jog input is ignored until the system is released.
+    5. The detection pipeline can keep running (frames keep coming)
+       but no new motion happens.
+
+  Suggested UI reflection in E-STOPPED state (backend defines exact
+  visuals; this is functional intent):
+    - The status pills (top-right of header) should not pretend
+      motors are nominal — flip the Motors icon to DANGER.
+    - The inspection panel should show a clear "E-STOPPED" status
+      instead of AUTONOMOUS or PAUSED.
+    - Manual controls should be visibly disabled or shown with an
+      "E-STOPPED — RELEASE TO CONTINUE" overlay.
+
+  Release / recovery:
+    The current UI does not include a release control. Backend should
+    decide the recovery interaction (hold-to-release button, separate
+    operator confirmation, physical key, etc.). Whatever it is, once
+    released, the system should return to PAUSED state — autonomous
+    must NOT auto-resume after an E-STOP. The operator must explicitly
+    press RESUME (in the inspection panel) or switch to MANUAL.
+
+
+--------------------------------------------------------------------------------
+  8. DATA UPDATES — WHAT NEEDS TO ARRIVE AND HOW OFTEN
+--------------------------------------------------------------------------------
+
+  The UI doesn't care about transport. Use WebSocket, MQTT, SSE,
+  HTTP polling, WebRTC — whichever fits. What matters is that the
+  following data reaches the UI at the rates below.
+
+  Continuous / high-frequency:
+    Live video frames             camera frame rate (display ~30 fps)
+    Camera head X/Y/Z position    >= 10 Hz
+    Frame temperature stats       update per frame (min/avg/max)
+    Anomaly badge state           per frame (visible or hidden)
+
+  Periodic / medium-frequency:
+    System status (4 subsystems)  every 1–2 s
+    Mission timer / UTC clock     1 Hz
+    Autonomous progress %         per cell completion (a few Hz max)
+    Coverage map sweep state      per cell completion
+    Elapsed / ETA                 1 Hz
+
+  Event-driven (push):
+    New detection                 immediately on classification
+    Status change on a detection  immediately on operator action
+    E-STOP triggered              immediately
+    Scan complete                 immediately
+
+  On-demand:
+    Frame thumbnails              fetched when the history strip
+                                  or detail page renders a card
+    Full-resolution frame         fetched when a detection is opened
+                                  in the detail page
+
+
+--------------------------------------------------------------------------------
+  9. WHAT THE UI DOES NOT DO
+--------------------------------------------------------------------------------
+
+  Out of scope for the front end (backend handles these):
+    - Difference / hotspot detection itself
+    - Priority classification of detections
+    - Frame capture, storage, and serving
+    - Path planning for the autonomous scan
+    - Motor control safety logic
+    - Cable tension management
+    - Network / authentication
+    - Logging / audit trail
+    - Maintenance scheduling, ticketing, external notifications
+
+
+--------------------------------------------------------------------------------
+  10. VISUAL REFERENCE
+--------------------------------------------------------------------------------
+
+  Argus.html is the visual source of truth. The components in it are
+  built from these files (kept for reference, not for editing
+  behavior here):
+
+    Argus.html              entry point. Loads scripts, renders V6Argus.
+    shared.jsx              icons (Arrow, Home, Play, Pause, Stop,
+                            Camera, Thermal, Wifi, Chip, Alert),
+                            ThermalFeed SVG, HistoryThumb SVG,
+                            CoverageMap SVG primitives.
+    v6-data.jsx             demo dataset:
+                              DETECTIONS array
+                              PRIORITY metadata (color, label, rank)
+                              STATUS metadata (color, label)
+                            REPLACE this file's exported arrays with
+                            live data when wiring the backend.
+                            Schema is the contract — see section 5.
+    v6-argus.jsx            the main V6 application:
+                              ArgusLogo SVG
+                              V6Header
+                              V6HeroFeed (incl. mode toggle,
+                                          temp tape, palette legend,
+                                          anomaly badge, breadcrumb)
+                              V6CoverageBlock + V6SweptCoverage
+                              V6TabToggle
+                              V6InspectionDetails
+                              V6ManualPanel (incl. V6PillBtn,
+                                             V6HomeBtn, V6ZBar)
+                              V6History + V6DetectionCard
+                              V6AlarmModal
+                              V6Argus (root)
+                            useV6Jog implements tap vs hold behavior.
+    v6-history-detail.jsx   the full-overlay archive:
+                              V6HistoryDetailPage
+                              PriorityFilterPill, StatusFilterPill
+                              LocationPin (plant map)
+                              DetectionListItem
+                              DetectionDetail
+
+  Companion files (different views, not loaded by Argus.html):
+    Argus Mobile.html       phone version, in an iPhone frame
+    Argus Logo.html         logo brand sheet with iteration variants
+
+  Demo behavior to replace when wiring real data:
+    - In v6-argus.jsx, the root component opens an alarm 2.5 s after
+      mount using DETECTIONS[0]. Replace this with a real
+      detection-event subscription.
+    - In v6-data.jsx, the DETECTIONS array is hand-crafted. Replace
+      with a live list maintained from backend events.
+    - The autonomous progress (0.42 = 42 %) is hard-coded for the
+      demo. Wire it to the real scan-progress state.
+    - All positions (X 0842, Y 0314, Z 1280) are demo strings. Wire
+      them to live motor positions.
+    - Status icon states are hard-coded (3 OK + 1 WARN). Wire to
+      real subsystem health.
+
+
+--------------------------------------------------------------------------------
+  END OF SPEC
+--------------------------------------------------------------------------------

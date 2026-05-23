@@ -1,0 +1,3 @@
+# FLIR One Pro (Android, USB-C) — grant access to the 'video' group
+# so the libusb driver can run without sudo.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="09cb", ATTRS{idProduct}=="1996", GROUP="video", MODE="0664"
