@@ -1,200 +1,248 @@
-# SpiderCam Inspection System
+# SpiderCam — Thermal Inspection Gantry
 
-A gantry-mounted thermal inspection system. A Raspberry Pi 5 controls movement via an ESP32 over Wi-Fi and captures thermal frames during each inspection pass. Frames are indexed by X-Y coordinate and compared against the previous pass to detect temperature anomalies (potential leaks).
+A cable-driven **SpiderCam** gantry that carries a thermal camera over an area
+and streams a live operator view to any browser on the LAN. Four cables, one
+per corner, are reeled by an ESP32 to move the camera head in X/Y/Z. A
+Raspberry Pi hosts the camera and the web stack.
 
----
+The thermal camera is a **FLIR One Pro** (USB-C). On the Pi, a libusb C driver
+demuxes its proprietary dual stream into standard `v4l2loopback` devices, and a
+Flask/SocketIO app reads those devices and serves the **Argus** operator UI.
 
-## System Overview
-
-```
-[ Laptop browser ]
-       |
-       | HTTP (same LAN)
-       v
-[ Raspberry Pi 5 ]  ──── Wi-Fi ────>  [ ESP32 ]
-  Flask web server                     Motor controller
-  MLX90640 / FLIR                      Receives: move commands
-  Thermal frames                                  start_inspection
-  Leak detection                       Reports:  position (x, y)
-                                                  status
-```
-
-The Pi is the **brain**: it hosts the interface, drives the camera, stores frames, and runs the comparison algorithm.  
-The ESP32 is the **muscle**: it owns the motors, executes movement, and reports position back to the Pi.
+> **Status (May 2026):** thermal feed is working. Visual (optical) feed is in
+> progress. The Argus backend (motor control, inspection runs, leak detection,
+> live data wiring) is **not yet implemented** — see [Current status](#current-status).
 
 ---
 
-## Folder Structure
+## System overview
+
+```
+[ browser on LAN ]
+       │  HTTP / MJPEG (and SocketIO, once wired)
+       ▼
+[ Raspberry Pi 5 ] ──────────── Wi-Fi ───────────▶ [ ESP32 ]
+  pi/flir-one-viewer/                                4× DRV8825 steppers
+    flirone-v4l2 (C, libusb)                         reels the 4 cables
+      └▶ /dev/video1  Y8 thermal   160×120           HTTP API on :80
+         /dev/video2  MJPEG visual 1440×1080         (mDNS: spidercam.local)
+         /dev/video3  RGB colorized thermal
+  pi/app/  (Flask + SocketIO)
+    serves the Argus operator UI
+       ▲
+       │  USB-C
+[ FLIR One Pro ]  (VID:PID 09cb:1996)
+```
+
+The Pi is the **brain** (camera, web server, future detection pipeline). The
+ESP32 is the **muscle** (owns the motors, runs cable-length inverse kinematics,
+reports position). The FLIR One Pro plugs into the Pi over USB-C.
+
+---
+
+## Folder structure
 
 ```
 spidercam/
-├── esp32/
+├── README.md
+├── setup.sh                     # one-time Pi bootstrap (Node, Claude Code, venv, I²C tools)
+│
+├── esp32/                       # PlatformIO project — motor-controller firmware
+│   ├── platformio.ini           # env:esp32dev, deps: ArduinoJson, AsyncTCP
 │   └── src/
-│       ├── main.ino          # Entry point: WiFi init, HTTP server setup, loop
-│       ├── config.h          # SSID, password, server port, pin definitions
-│       ├── http_server.cpp   # Route handlers: /ping, /move, /start_inspection, /status
-│       ├── motor_control.cpp # Motor driver logic (step, direction, speed)
-│       └── position.cpp      # Tracks current X-Y position (step counter)
+│       ├── spidercam_esp32_4_stepper.ino   # ACTUAL firmware (see ESP32 section)
+│       ├── config.h             # Wi-Fi SSID/password, HTTP port, pins
+│       ├── http_server.cpp      # legacy scaffolding stub — superseded by the .ino
+│       ├── motor_control.cpp    # legacy scaffolding stub
+│       └── position.cpp         # legacy scaffolding stub
 │
 ├── pi/
-│   ├── app/
-│   │   ├── __init__.py       # Flask app factory (create_app())
-│   │   ├── main.py           # Entry point: python -m app.main
-│   │   ├── config.py         # ESP32 IP, camera type, thresholds, data paths
-│   │   │
-│   │   ├── routes/
-│   │   │   ├── __init__.py
-│   │   │   ├── control.py        # POST /api/move, POST /api/stop
-│   │   │   ├── inspection.py     # POST /api/inspection/start, GET /api/inspection/status
-│   │   │   ├── camera.py         # GET /api/camera/frame (single frame as image)
-│   │   │   └── results.py        # GET /api/results/latest (leak alerts + heatmap diff)
-│   │   │
-│   │   ├── services/
-│   │   │   ├── __init__.py
-│   │   │   ├── esp_client.py     # HTTP client wrapper for all ESP32 calls
-│   │   │   ├── camera_base.py    # Abstract base class: get_frame() -> np.ndarray
-│   │   │   ├── camera_mlx.py     # MLX90640 implementation
-│   │   │   ├── camera_flir.py    # FLIR One Pro implementation (swap-in later)
-│   │   │   └── inspection_runner.py  # Orchestrates: start pass, capture frames, save
-│   │   │
-│   │   ├── detection/
-│   │   │   ├── __init__.py
-│   │   │   ├── comparator.py     # Loads baseline + current frames, runs diff
-│   │   │   ├── noise_filter.py   # Smoothing / temporal averaging before compare
-│   │   │   └── leak_detector.py  # Thresholding, contour finding, alert generation
-│   │   │
-│   │   └── static/
-│   │       ├── index.html        # Single-page UI
-│   │       ├── css/
-│   │       │   └── style.css
-│   │       └── js/
-│   │           ├── controls.js   # Direction buttons, autonomous start
-│   │           ├── camera.js     # Live thermal frame polling
-│   │           └── results.js    # Renders leak alerts on the interface
+│   ├── requirements.txt         # Flask app deps
+│   ├── .venv/                   # Python virtualenv (created by setup.sh)
 │   │
-│   ├── data/
-│   │   ├── inspections/
-│   │   │   └── {YYYY-MM-DD_HHMMSS}/   # One folder per inspection pass
-│   │   │       └── {x}_{y}.npy        # Raw thermal frame (numpy array) at coord x,y
-│   │   └── baselines/
-│   │       └── latest -> ../inspections/{most_recent}/   # Symlink to last completed pass
+│   ├── flir-one-viewer/         # FLIR One Pro → v4l2loopback driver + MJPEG viewer
+│   │   ├── README.md            # full driver/viewer docs + extensive troubleshooting
+│   │   ├── driver/
+│   │   │   ├── flirone-v4l2.c   # patched libusb C bridge (publishes Y8 thermal + visual)
+│   │   │   ├── flirone-v4l2     # built binary
+│   │   │   ├── Makefile
+│   │   │   └── palettes/        # Iron2.raw / Rainbow.raw / Grayscale.raw colormaps
+│   │   ├── setup/
+│   │   │   ├── install.sh        # one-time: deps, build, udev rule, v4l2loopback on boot
+│   │   │   ├── start.sh          # every run: load loopback, run driver, run viewer
+│   │   │   └── 77-flirone-lusb.rules
+│   │   └── viewer/
+│   │       ├── viewer.py         # Flask MJPEG viewer: thermal + visual on :5000
+│   │       └── requirements.txt
 │   │
-│   └── requirements.txt
+│   └── app/                      # Argus Flask + SocketIO backend
+│       ├── __init__.py           # create_app() → (app, socketio); registers blueprints
+│       ├── main.py               # entry point: python -m app.main
+│       ├── config.py             # ESP32 IP, camera type, thresholds, data paths
+│       ├── routes/
+│       │   ├── camera.py         # /api/camera/frame|frame.json|stream  (implemented)
+│       │   ├── control.py        # /api/move, /api/stop                 (STUB — blueprint only)
+│       │   ├── inspection.py     # /api/inspection/*                    (STUB)
+│       │   └── results.py        # /api/results/*                       (STUB)
+│       ├── services/
+│       │   ├── camera_base.py    # CameraBase ABC + get_camera() factory (implemented)
+│       │   ├── camera_mlx.py     # MLX90640 driver — legacy, implemented
+│       │   ├── camera_flir.py    # FLIR One Pro capture                 (STUB — not implemented)
+│       │   ├── esp_client.py     # ESP32 HTTP client — only ping() implemented
+│       │   └── inspection_runner.py  # autonomous-pass orchestrator     (STUB)
+│       ├── detection/
+│       │   ├── comparator.py     # baseline-vs-current diff             (STUB)
+│       │   ├── leak_detector.py  # thresholding / alerts                (STUB)
+│       │   └── noise_filter.py   # smoothing                            (STUB)
+│       └── static/               # Argus front-end (React via Babel, runs on demo data)
+│           ├── Argus.html         # entry point — open this to see the UI
+│           ├── Argus Spec.txt     # functional spec / contract for backend wiring
+│           ├── shared.jsx, v6-argus.jsx, v6-data.jsx, v6-history-detail.jsx
+│           ├── Argus Mobile.html, Argus Logo.html
+│           └── README.md          # front-end handoff notes
 │
-└── docs/
-    ├── architecture.md   # This file, in more detail
-    ├── api.md            # Full ESP32 HTTP API contract
-    └── wiring.md         # Physical connections (power, any GPIO used)
+└── docs/                         # earlier design notes — partly predate the FLIR pivot
+    ├── api.md                    # ESP32 HTTP API contract
+    ├── setup-guide.md            # Pi-from-scratch dev setup
+    └── wiring.md                 # GPIO / wiring notes (still references MLX90640)
 ```
+
+> The project began with an MLX90640 I²C sensor and a step-counted X/Y gantry.
+> It has since pivoted to the **FLIR One Pro** on a **4-cable SpiderCam** rig.
+> The MLX90640 code (`camera_mlx.py`), the `esp32/src/*.cpp` scaffolding, and
+> parts of `docs/` are leftovers from that earlier design and are noted as such
+> above.
 
 ---
 
-## Communication Protocol: Pi → ESP32
+## The two parts of the Pi setup
 
-All commands are plain HTTP. The ESP32 runs a lightweight HTTP server (Arduino `WebServer` library).  
-The Pi sends requests using Python `requests`. No broker, no MQTT, no WebSockets needed at this stage.
+### 1. `flir-one-viewer/` — getting the camera onto the Pi
 
-| Endpoint | Method | Body | Description |
-|---|---|---|---|
-| `/ping` | GET | — | Health check. ESP32 replies `{"status": "ok"}` |
-| `/move` | POST | `{"direction": "left"}` | Move one step in given direction. Directions: `left`, `right`, `forward`, `backward` |
-| `/stop` | POST | — | Halt all motors immediately |
-| `/start_inspection` | POST | — | Triggers ESP32's autonomous inspection route |
-| `/position` | GET | — | Returns `{"x": 120, "y": 45}` (step counts) |
-| `/status` | GET | — | Returns motor state, busy flag, current position |
+A libusb C driver (`flirone-v4l2`) speaks the FLIR One Pro's proprietary USB
+protocol and writes standard V4L2 devices via `v4l2loopback`:
 
-The Pi polls `/position` during an inspection pass to know which coordinate to tag each captured frame with.
+| device | content |
+|---|---|
+| `/dev/video1` | Y8 thermal, 160×120 |
+| `/dev/video2` | MJPEG visible, 1440×1080 |
+| `/dev/video3` | RGB24 colorized thermal |
+
+`viewer/viewer.py` reads those devices with OpenCV, re-encodes them as MJPEG,
+and serves a side-by-side / overlay page on `:5000`. The driver in this tree
+carries several fixes over upstream (`fnoop/flirone-v4l2`) so the Pro's thermal
+device actually publishes, the visual frame size is correct, and the driver
+survives the Pro's periodic USB drops. The full story — including a deep
+troubleshooting guide — is in **`pi/flir-one-viewer/README.md`**.
+
+One-time install:
+
+```bash
+cd pi/flir-one-viewer
+bash setup/install.sh        # installs deps, builds the driver, sets up udev + v4l2loopback
+# log out / back in (or reboot) so the 'video' group and udev rule apply
+```
+
+### 2. `app/` — the Argus backend + operator UI
+
+`pi/app/` is a Flask + SocketIO application intended to be the production
+operator interface: it serves the **Argus** front-end (`app/static/`) and will
+expose the live camera feed, motor control, inspection runs, and leak-detection
+results. The front-end design is complete and runs on demo data; **the backend
+that feeds it real data is mostly stubs today** (see [Current status](#current-status)).
 
 ---
 
-## Data Flow: Inspection Pass
+## ESP32 — motor controller
 
-```
-1. User presses "Start Inspection" in browser
-2. Pi sends POST /start_inspection to ESP32
-3. ESP32 begins autonomous route (its own motor logic)
-4. Pi starts capture loop:
-      every N ms → get_frame() from camera
-                 → poll /position from ESP32
-                 → save frame as data/inspections/{timestamp}/{x}_{y}.npy
-5. When ESP32 returns to home position → inspection complete
-6. Pi runs comparison:
-      for each frame in current pass:
-          load matching frame from baselines/latest/{x}_{y}.npy
-          apply noise filter to both
-          compute diff
-          if max(diff) > LEAK_THRESHOLD → flag as alert
-7. Alerts appear on the interface with coordinate, diff heatmap, temp delta
-8. Current pass becomes new baseline (or user confirms it manually)
-```
+`esp32/src/spidercam_esp32_4_stepper.ino` is the real, working firmware. It:
 
----
+- drives **4× DRV8825** stepper drivers (one per cable) over STEP/DIR pins,
+- computes cable lengths from a target X/Y/Z via SpiderCam inverse kinematics
+  (frame geometry/spool radius are constants at the top of the sketch — edit
+  these for your rig),
+- moves all four motors synchronously (Bresenham-style step distribution),
+- connects over Wi-Fi (STA) and advertises mDNS as **`spidercam.local`**,
+- homes X/Y against limit switches on boot.
 
-## Camera Abstraction
+HTTP API (port 80):
 
-Both cameras expose the same interface so swapping requires zero changes elsewhere:
-
-```python
-class CameraBase:
-    def get_frame(self) -> np.ndarray:
-        """Returns a 2D float array of temperatures in Celsius."""
-        raise NotImplementedError
-
-    def get_resolution(self) -> tuple[int, int]:
-        """Returns (width, height) in pixels."""
-        raise NotImplementedError
-```
-
-- `camera_mlx.py` → MLX90640 (32×24, ~4 fps via I²C)
-- `camera_flir.py` → FLIR One Pro (160×120, up to ~8.7 fps via USB)
-
-Switch by changing one line in `config.py`: `CAMERA_TYPE = "mlx"` or `"flir"`.
-
----
-
-## Leak Detection Logic
-
-```
-raw_current[x,y]   ──┐
-                      ├─ noise_filter() ──> smoothed_current
-raw_current[x,y-1] ──┘  (temporal avg    
-raw_current[x,y+1]       over N frames)  
-
-smoothed_baseline  ──────────────────────> diff = |smoothed_current - smoothed_baseline|
-
-diff > LEAK_THRESHOLD  ──> LeakAlert(x, y, max_delta, diff_heatmap_png)
-```
-
-Key configurable values in `config.py`:
-- `LEAK_THRESHOLD` — temperature delta in °C that triggers an alert (start with ~2.0)
-- `NOISE_FILTER_KERNEL` — spatial smoothing kernel size (start with 3×3 Gaussian)
-- `MIN_ALERT_AREA` — minimum number of pixels above threshold to count (filters single-pixel noise)
-
----
-
-## Phase Roadmap
-
-| Phase | Goal | Files involved |
+| Endpoint | Method | Body / response |
 |---|---|---|
-| **1 — Connection** | Pi sends `/ping`, ESP32 responds | `esp32/src/main.ino`, `services/esp_client.py` |
-| **2 — Manual control** | Direction buttons work from browser | `routes/control.py`, `static/js/controls.js` |
-| **3 — Camera feed** | Live thermal frame visible in browser | `services/camera_mlx.py`, `routes/camera.py` |
-| **4 — Inspection pass** | Full pass runs, frames saved to disk | `services/inspection_runner.py` |
-| **5 — Leak detection** | Comparison algorithm flags anomalies | `detection/` module |
-| **6 — FLIR swap** | Replace camera, keep everything else | `services/camera_flir.py`, `config.py` |
+| `/ping` | GET | → `{"status":"ok"}` |
+| `/move` | POST | `{"x":<cm>,"y":<cm>,"z":<cm>}` → `202 {"status":"queued"}` (runs on a core-0 task) |
+| `/stop` | POST | halts the motor task → `{"ok":true}` |
+| `/position` | GET | → `{"x":..,"y":..,"z":..}` (cm) |
+| `/status` | GET | → `{"state":"idle"|"moving","x":..,"y":..,"z":..}` |
+
+> Note: this absolute **X/Y/Z coordinate** API is the current contract. The
+> `docs/api.md` file and the `esp32/src/*.cpp` stubs describe an older
+> direction-based (`left/right/forward/backward`) + `/start_inspection` design
+> and are out of date.
+
+Build/flash with PlatformIO (`esp32dev` env). Set your Wi-Fi credentials in
+`esp32/src/config.h`.
 
 ---
 
-## Quick Start (Phase 1)
+## Running it
 
-### ESP32
-1. Open `esp32/src/main.ino` in Arduino IDE
-2. Fill in `config.h` with your Wi-Fi SSID/password
-3. Flash to ESP32
-4. Open Serial Monitor — it will print its IP address once connected
+### Start the camera feed (works today)
 
-### Raspberry Pi
-1. `cd pi && pip install -r requirements.txt`
-2. Set `ESP32_IP` in `app/config.py` to the IP from the serial monitor
-3. `python -m app.main`
-4. Open `http://<pi-ip>:5000` from your laptop browser
+```bash
+cd pi/flir-one-viewer
+bash setup/start.sh
+#   optional palette:  FLIR_PALETTE=$PWD/driver/palettes/Rainbow.raw bash setup/start.sh
+#   optional port:     FLIR_PORT=8080 bash setup/start.sh
+```
+
+`start.sh` loads `v4l2loopback`, launches the C driver, waits ~3 s for the
+camera to enumerate, then runs the MJPEG viewer and prints the LAN URL.
+
+### Open the UI
+
+```
+http://192.168.85.249:5000
+```
+
+(`start.sh` prints the exact URL for the Pi's current IP.) Thermal shows on the
+left, visual on the right, with a side-by-side ↔ overlay toggle.
+
+### Start the Argus backend (in progress)
+
+```bash
+cd pi
+source .venv/bin/activate
+python -m app.main          # serves Flask + SocketIO on :5000
+```
+
+> **Heads-up:** the FLIR viewer (`viewer.py`) and the Argus app (`app.main`)
+> both default to port **5000**, so they can't run on it at the same time. The
+> live feed you can open today is the one served by `flir-one-viewer/`; the
+> Argus app is the in-progress replacement and its backend routes are still
+> stubs. Run one at a time (or give the viewer a different `FLIR_PORT`) until
+> the Argus backend reads the v4l2 devices directly.
+
+---
+
+## Current status
+
+| Area | State |
+|---|---|
+| FLIR One Pro USB driver → `/dev/video1,2,3` | ✅ working (patched in `flir-one-viewer/`) |
+| Thermal MJPEG feed at `:5000` | ✅ working |
+| Visual / optical feed | 🚧 in progress (frame-size & black-frame fixes in the driver README) |
+| ESP32 firmware (cable kinematics + HTTP API) | ✅ implemented |
+| Argus front-end (layout, components) | ✅ built, but runs on **demo data** (`v6-data.jsx`) |
+| Argus served + live-data wiring (SocketIO) | ❌ not yet implemented |
+| `app/routes/camera.py` | ⚠️ implemented, but still renders MLX-style (32×24) frames via `get_camera()` — not yet reading the FLIR v4l2 devices |
+| `app/routes/control.py`, `inspection.py`, `results.py` | ❌ blueprints only, no endpoints |
+| `app/services/esp_client.py` | ⚠️ only `ping()` — `move/stop/position/status` not implemented |
+| `app/services/camera_flir.py` | ❌ not implemented (commented-out stub) |
+| `app/services/inspection_runner.py` | ❌ not implemented |
+| `app/detection/*` (comparator, leak_detector, noise_filter) | ❌ not implemented |
+
+**Next steps** are roughly: implement `camera_flir.py` to read `/dev/video1`,
+point `routes/camera.py` at it, flesh out `esp_client.py` against the ESP32's
+X/Y/Z API, serve `Argus.html` from Flask, and replace the front-end's demo data
+with live SocketIO events (the contract is in `app/static/Argus Spec.txt`).
