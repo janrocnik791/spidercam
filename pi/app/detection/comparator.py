@@ -73,6 +73,39 @@ def _diff_mask(aligned_gray, current_gray, threshold_value=30):
     return cleaned_diff
 
 
+def _save_frame_views(current_path, baseline_gray, current_gray, diff):
+    """Save baseline / current / diff-overlay JPEGs next to the captured frame
+    (``{stem}_baseline.jpg`` / ``{stem}_current.jpg`` / ``{stem}_diff.jpg``) and
+    return the path of the diff overlay.
+
+    The diff overlay is the current frame colorized with the iron-like
+    ``COLORMAP_HOT`` and the changed regions filled bright green, so the history
+    detail view can show where the leak is.
+    """
+    base_dir = os.path.dirname(current_path)
+    stem = os.path.splitext(os.path.basename(current_path))[0]   # "{x}_{y}"
+    baseline_out = os.path.join(base_dir, f"{stem}_baseline.jpg")
+    current_out = os.path.join(base_dir, f"{stem}_current.jpg")
+    diff_out = os.path.join(base_dir, f"{stem}_diff.jpg")
+
+    # Baseline: grayscale, saved as-is.
+    cv2.imwrite(baseline_out, baseline_gray)
+
+    # Current: inspection_runner already saved this frame as "{stem}.jpg"; write
+    # the _current.jpg copy only if it isn't there yet.
+    if not os.path.exists(current_out):
+        cv2.imwrite(current_out, current_gray)
+
+    # Diff overlay: HOT-colorized current + green filled diff contours on top.
+    colorized = cv2.applyColorMap(current_gray, cv2.COLORMAP_HOT)
+    found = cv2.findContours(diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = found[0] if len(found) == 2 else found[1]
+    cv2.drawContours(colorized, contours, -1, (0, 255, 0), thickness=cv2.FILLED)
+    cv2.imwrite(diff_out, colorized)
+
+    return diff_out
+
+
 def compare_frames(baseline_path: str, current_path: str, x: int, y: int) -> list:
     """Compare one captured frame against its baseline → ``list[LeakAlert]``.
 
@@ -87,6 +120,7 @@ def compare_frames(baseline_path: str, current_path: str, x: int, y: int) -> lis
     current = cv2.imread(current_path, cv2.IMREAD_GRAYSCALE)
     if baseline is None or current is None:
         return []
+    baseline_original = baseline   # keep the as-loaded baseline for saving
 
     try:
         aligned = _align_gray(baseline, current)
@@ -101,7 +135,12 @@ def compare_frames(baseline_path: str, current_path: str, x: int, y: int) -> lis
         aligned = baseline
 
     diff = _diff_mask(aligned, current, threshold_value=30)
-    return leak_detector.check(diff, x, y)
+    diff_path = _save_frame_views(current_path, baseline_original, current, diff)
+
+    alerts = leak_detector.check(diff, x, y)
+    for alert in alerts:
+        alert.diff_path = diff_path
+    return alerts
 
 
 def compare_pass(current_dir: str, baseline_dir: str) -> list:

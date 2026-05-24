@@ -160,9 +160,9 @@
         {/* Frames row */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {[
-            { label: 'PAST FRAME', mode: 'raw', anomaly: false, note: `Pass ${(parseInt(d.pass) - 1).toString().padStart(3, '0')}` },
-            { label: 'CURRENT FRAME', mode: 'raw', anomaly: true, note: `Pass ${d.pass}` },
-            { label: 'DIFFERENCE', mode: 'diff', anomaly: true, note: 'Δ overlay' },
+            { label: 'PAST FRAME', key: 'past', mode: 'raw', anomaly: false, note: `Pass ${(parseInt(d.pass) - 1).toString().padStart(3, '0')}` },
+            { label: 'CURRENT FRAME', key: 'current', mode: 'raw', anomaly: true, note: `Pass ${d.pass}` },
+            { label: 'DIFFERENCE', key: 'difference', mode: 'diff', anomaly: true, note: 'Δ overlay' },
           ].map((f, i) => (
             <div key={i}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
@@ -170,7 +170,7 @@
                 <span style={{ ...v6.mono, fontSize: 9, color: v6.faint }}>{f.note}</span>
               </div>
               <div style={{ aspectRatio: '4/3', background: '#000', position: 'relative', overflow: 'hidden' }}>
-                <HistoryThumb mode={f.mode} anomaly={f.anomaly} />
+                <FrameImage src={d.frames && d.frames[f.key]} mode={f.mode} anomaly={f.anomaly} />
               </div>
             </div>
           ))}
@@ -278,6 +278,25 @@
         </div>
       </div>
     );
+  }
+
+  // Real saved frame from the Pi (baseline / current / diff overlay). Falls
+  // back to the synthetic HistoryThumb placeholder when there's no URL or the
+  // image can't be loaded yet.
+  function FrameImage({ src, mode, anomaly }) {
+    const [failed, setFailed] = React.useState(false);
+    React.useEffect(() => { setFailed(false); }, [src]);
+    if (src && !failed) {
+      return (
+        <img
+          src={src}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      );
+    }
+    return <HistoryThumb mode={mode} anomaly={anomaly} />;
   }
 
   function V6HistoryDetailPage({ initialSelected, detections, onAction, onClose }) {

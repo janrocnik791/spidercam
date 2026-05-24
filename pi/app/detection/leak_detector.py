@@ -34,6 +34,7 @@ class LeakAlert:
     y: int            # gantry Y at capture (mm)
     max_delta: float  # max pixel diff value within the bbox (0–255 scale, Y8)
     bbox: tuple       # (bx, by, bw, bh) of the flagged region within the frame
+    diff_path: str = ""  # path to the saved _diff.jpg overlay (set by comparator)
 
 
 def reset_alert_zones():

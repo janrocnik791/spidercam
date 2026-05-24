@@ -127,8 +127,9 @@ def _alert_to_detection(alert, idx):
     loc_x = max(0.0, min(1.0, alert.x / config.PLANT_W_MM))
     loc_y = max(0.0, min(1.0, alert.y / config.PLANT_H_MM))
     z = runtime.scan.position.get("z", config.Z_MAX_MM // 2)
+    det_id = f"L-{config.SESSION_ID:03d}-{idx:03d}"
     return {
-        "id": f"L-{config.SESSION_ID:03d}-{idx:03d}",
+        "id": det_id,
         "priority": priority,
         "status": "new",
         "pass": f"{idx:03d}",
@@ -140,4 +141,21 @@ def _alert_to_detection(alert, idx):
         "locNorm": {"x": round(loc_x, 4), "y": round(loc_y, 4)},
         "mission": config.MISSION_NAME,
         "notes": "",
+        # Saved frame views — URLs the UI fetches, plus the on-disk paths the
+        # results blueprint serves them from (see routes/results.py).
+        "frames": {kind: f"/api/results/detections/{det_id}/frame/{kind}"
+                   for kind in ("past", "current", "difference")},
+        "frame_files": _frame_files(alert.diff_path),
+    }
+
+
+def _frame_files(diff_path):
+    """Map the alert's _diff.jpg path to the three saved frame files."""
+    if not diff_path or not diff_path.endswith("_diff.jpg"):
+        return {}
+    stem = diff_path[:-len("_diff.jpg")]
+    return {
+        "past": f"{stem}_baseline.jpg",      # previous pass over this cell
+        "current": f"{stem}_current.jpg",    # this pass (anomaly visible)
+        "difference": diff_path,             # Δ overlay
     }
