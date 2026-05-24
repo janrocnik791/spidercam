@@ -1,39 +1,73 @@
 """
 SpiderCam Pi – Leak Detector
 
-Takes a diff array (|current - baseline|) at a given coordinate and decides
-whether it constitutes a leak alert.
+Takes a *cleaned binary diff mask* (produced by ``comparator``) for one captured
+frame at a given gantry coordinate and decides whether it constitutes a leak
+alert. Contour regions above ``config.MIN_ALERT_AREA`` become alerts, and alerts
+are de-duplicated per pass by gantry coordinate so the same leak isn't reported
+on every frame the camera lingers over it.
 
-Claude Code instructions:
-
-    @dataclass
-    class LeakAlert:
-        x: int                  # Gantry X position (step counts)
-        y: int                  # Gantry Y position (step counts)
-        max_delta: float        # Largest temperature difference in the frame (°C)
-        mean_delta: float       # Mean temp difference across flagged pixels
-        affected_pixels: int    # Count of pixels above threshold
-        diff_image: np.ndarray  # The diff array for rendering as heatmap
-
-    def check(diff: np.ndarray, x: int, y: int) -> list[LeakAlert]:
-        mask = diff > config.LEAK_THRESHOLD
-        if mask.sum() < config.MIN_ALERT_AREA:
-            return []   # Not enough pixels — sensor noise, ignore
-
-        return [LeakAlert(
-            x=x, y=y,
-            max_delta=float(diff[mask].max()),
-            mean_delta=float(diff[mask].mean()),
-            affected_pixels=int(mask.sum()),
-            diff_image=diff,
-        )]
-
-    def alerts_to_json(alerts: list[LeakAlert]) -> list[dict]:
-        Serialise for sending to the browser via SocketIO or REST.
-        Convert diff_image to a base64 PNG for inline rendering.
+The diff mask is on the Y8 (0–255) intensity scale: the FLIR loopback feed is a
+contrast-stretched Y8 image, so the "delta" here is an intensity difference, not
+a calibrated °C value (see ``app/config.py`` · FLIR temperature notes).
 """
 
-# from dataclasses import dataclass
-# import numpy as np
-# import cv2, base64
-# from app.config import LEAK_THRESHOLD, MIN_ALERT_AREA
+from dataclasses import dataclass
+
+import cv2
+
+from app.config import MIN_ALERT_AREA
+
+# Two gantry coordinates within this Manhattan distance are treated as the same
+# physical zone for de-duplication within a single pass.
+_ZONE_MERGE_DISTANCE = 4
+
+# Coordinates already alerted on during the current pass. Module-global so the
+# live capture-loop comparison and the end-of-pass batch share the same memory.
+# Cleared by reset_alert_zones() at the start of every pass.
+_alerted_zones: list[tuple[int, int]] = []
+
+
+@dataclass
+class LeakAlert:
+    x: int            # gantry X at capture (mm, from the ESP32)
+    y: int            # gantry Y at capture (mm)
+    max_delta: float  # max pixel diff value within the bbox (0–255 scale, Y8)
+    bbox: tuple       # (bx, by, bw, bh) of the flagged region within the frame
+
+
+def reset_alert_zones():
+    """Clear the per-pass zone memory. Call at the start of each new pass."""
+    _alerted_zones.clear()
+
+
+def check(diff, x, y) -> list[LeakAlert]:
+    """Find leak regions in a cleaned diff mask, de-duplicated per pass.
+
+    Contours with area ≥ ``MIN_ALERT_AREA`` are candidate leaks. A candidate is
+    suppressed when an already-alerted zone is within ``_ZONE_MERGE_DISTANCE``
+    (Manhattan) of ``(x, y)``; otherwise ``(x, y)`` is recorded and a
+    :class:`LeakAlert` is emitted.
+    """
+    # findContours returns (contours, hierarchy) on OpenCV 4 and
+    # (image, contours, hierarchy) on 3 — handle both like program.py does.
+    found = cv2.findContours(diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = found[0] if len(found) == 2 else found[1]
+
+    alerts = []
+    for c in contours:
+        if cv2.contourArea(c) < MIN_ALERT_AREA:
+            continue   # too small — sensor noise, ignore
+
+        if any(abs(x - zx) + abs(y - zy) <= _ZONE_MERGE_DISTANCE
+               for zx, zy in _alerted_zones):
+            continue   # already alerted on this zone this pass
+
+        bx, by, bw, bh = cv2.boundingRect(c)
+        region = diff[by:by + bh, bx:bx + bw]
+        max_delta = float(region.max()) if region.size else 0.0
+
+        _alerted_zones.append((x, y))
+        alerts.append(LeakAlert(x=x, y=y, max_delta=max_delta, bbox=(bx, by, bw, bh)))
+
+    return alerts

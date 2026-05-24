@@ -231,16 +231,16 @@ python -m app.main          # serves Flask + SocketIO on :5000
 |---|---|
 | FLIR One Pro USB driver → `/dev/video1,2,3` | ✅ working (patched in `flir-one-viewer/`) |
 | Thermal MJPEG feed at `:5000` | ✅ working |
-| Visual / optical feed | 🚧 in progress (frame-size & black-frame fixes in the driver README) |
+| Visual / optical feed | ✅ live — streaming into the Argus UI in the browser via MJPEG |
 | ESP32 firmware (cable kinematics + HTTP API) | ✅ implemented |
-| Argus front-end (layout, components) | ✅ built, but runs on **demo data** (`v6-data.jsx`) |
+| Argus front-end (layout, components) | ✅ built — **both video feeds (thermal + visible) confirmed live in the interface**; remaining panels still run on **demo data** (`v6-data.jsx`) |
 | Argus served + live-data wiring (SocketIO) | ❌ not yet implemented |
-| `app/routes/camera.py` | ⚠️ implemented, but still renders MLX-style (32×24) frames via `get_camera()` — not yet reading the FLIR v4l2 devices |
+| `app/routes/camera.py` | ✅ implemented — serves the live FLIR thermal + visible feeds as MJPEG (`/api/camera/thermal`, `/api/camera/optical`) that the Argus UI renders in the browser |
 | `app/routes/control.py`, `inspection.py`, `results.py` | ❌ blueprints only, no endpoints |
 | `app/services/esp_client.py` | ⚠️ only `ping()` — `move/stop/position/status` not implemented |
-| `app/services/camera_flir.py` | ❌ not implemented (commented-out stub) |
-| `app/services/inspection_runner.py` | ❌ not implemented |
-| `app/detection/*` (comparator, leak_detector, noise_filter) | ❌ not implemented |
+| `app/services/camera_flir.py` | ✅ implemented — reads the FLIR v4l2 devices (`/dev/video1` thermal, `/dev/video2` visible) and streams **both feeds as live MJPEG into the Argus UI in the browser**, not just on the backend |
+| `app/services/inspection_runner.py` | ✅ implemented — captures the Y8 thermal frame at 1 fps to `data/inspections/{ts}/{x}_{y}.jpg`, compares each frame live, and repoints the `baselines/latest` symlink to the new pass on completion |
+| `app/detection/*` (comparator, leak_detector, noise_filter) | ✅ implemented — SIFT-aligned `absdiff` comparison (`compare_frames`/`compare_pass`), contour-based `LeakAlert` detection with per-pass Manhattan-distance zone dedup, and a Gaussian noise filter |
 
 **Next steps** are roughly: implement `camera_flir.py` to read `/dev/video1`,
 point `routes/camera.py` at it, flesh out `esp_client.py` against the ESP32's

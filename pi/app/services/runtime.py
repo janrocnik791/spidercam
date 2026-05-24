@@ -22,6 +22,7 @@ from app import config
 # ── Module-level singletons, populated by create_app() ──────────────────────────
 camera = None        # app.services.camera_flir.FLIROneProCamera
 esp = None           # app.services.esp_client.ESP32Client
+runner = None        # app.services.inspection_runner.InspectionRunner (current pass)
 
 
 class ScanState:

@@ -228,6 +228,19 @@ class FLIROneProCamera(CameraBase):
             return None
         return self._stats_from_grey(self._grey(raw))
 
+    def get_thermal_y8(self):
+        """Return the raw Y8 thermal frame as a single-channel uint8 array, or
+        ``None`` if no frame is available yet.
+
+        This is the un-colorized intensity image the inspection pipeline saves
+        and diffs. (``get_thermal_frame`` returns an iron-LUT BGR image for
+        display; grayscaling that would not recover the Y8 ordering.)
+        """
+        raw = self._thermal.latest()
+        if raw is None:
+            return None
+        return self._grey(raw)
+
     # ── visual ─────────────────────────────────────────────────────────────────
     def get_visual_frame(self):
         """Return the visible-light frame as display-sized BGR, or None.

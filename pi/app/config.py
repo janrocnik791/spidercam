@@ -67,6 +67,13 @@ BASE_DATA_DIR   = os.path.join(os.path.dirname(__file__), "..", "data")
 INSPECTIONS_DIR = os.path.join(BASE_DATA_DIR, "inspections")
 BASELINES_DIR   = os.path.join(BASE_DATA_DIR, "baselines")
 BASELINE_LATEST = os.path.join(BASELINES_DIR, "latest")
+# Sample frames for trying the comparison pipeline without the gantry.
+DEMO_DIR          = os.path.join(BASE_DATA_DIR, "demo")
+DEMO_BASELINE_DIR = os.path.join(DEMO_DIR, "baseline")
+DEMO_CURRENT_DIR  = os.path.join(DEMO_DIR, "current")
+
+# Directories the app ensures exist at startup (see app.main).
+DATA_DIRS = (INSPECTIONS_DIR, BASELINES_DIR, DEMO_BASELINE_DIR, DEMO_CURRENT_DIR)
 
 # ── Leak detection ────────────────────────────────────────────────────────────
 # Temperature delta (°C) above which a pixel is considered anomalous.
