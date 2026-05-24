@@ -306,12 +306,15 @@ function fmtMMSS(sec) {
 }
 
 // ─── Live inspection details panel ────────────────────────────────────
-function V6InspectionDetails({ running, onPauseResume, onStop, onOpenDetail }) {
+function V6InspectionDetails({ running, onStart, onPauseResume, onStop, onOpenDetail }) {
   const { scan, position, detections } = useArgus();
-  const progress = scan?.progress ?? 0;
   const estopped = scan?.mode === 'estop';
-  const pillColor = estopped ? v6.danger : running ? v6.ok : v6.warn;
-  const pillLabel = estopped ? 'E-STOPPED' : running ? 'AUTONOMOUS' : 'PAUSED';
+  const idle = scan?.mode === 'idle';
+  const complete = scan?.mode === 'complete';
+  const ready = idle || complete;   // show START INSPECTION (begin / run again)
+  const progress = idle ? 0 : (scan?.progress ?? 0);
+  const pillColor = estopped ? v6.danger : running ? v6.ok : complete ? v6.ok : idle ? v6.mute : v6.warn;
+  const pillLabel = estopped ? 'E-STOPPED' : running ? 'AUTONOMOUS' : complete ? 'COMPLETE' : idle ? 'READY' : 'PAUSED';
   const recent = (detections || [])
     .filter(d => d.priority === 'critical' || d.priority === 'high')
     .slice(0, 2);
@@ -334,10 +337,10 @@ function V6InspectionDetails({ running, onPauseResume, onStop, onOpenDetail }) {
       {/* Title + status (A1 voice) */}
       <div>
         <div style={{ fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', fontSize: 17, color: '#fff', lineHeight: 1.15, fontWeight: 500, letterSpacing: 0.6 }}>
-          {estopped ? 'E-STOPPED' : running ? 'SCAN ACTIVE' : 'STANDING BY'}
+          {estopped ? 'E-STOPPED' : running ? 'SCAN ACTIVE' : complete ? 'SCAN COMPLETE' : idle ? 'READY TO SCAN' : 'STANDING BY'}
         </div>
         <div style={{ ...v6.mono, fontSize: 9.5, color: v6.mute, marginTop: 6, letterSpacing: 1 }}>
-          PASS {String(scan?.current_pass ?? 0).padStart(2, '0')} OF {String(scan?.total_passes ?? 0).padStart(2, '0')} &nbsp;·&nbsp; CELL {scan?.current_cell ?? 0} OF {scan?.total_cells ?? 0}
+          {idle ? 'AWAITING START' : <>PASS {String(scan?.current_pass ?? 0).padStart(2, '0')} OF {String(scan?.total_passes ?? 0).padStart(2, '0')} &nbsp;·&nbsp; CELL {scan?.current_cell ?? 0} OF {scan?.total_cells ?? 0}</>}
         </div>
       </div>
 
@@ -348,8 +351,8 @@ function V6InspectionDetails({ running, onPauseResume, onStop, onOpenDetail }) {
           <span style={{ ...v6.mono, fontSize: 13, color: v6.mute }}>%</span>
           <div style={{ flex: 1 }} />
           <div style={{ ...v6.mono, fontSize: 9, color: v6.faint, letterSpacing: 1.2, textAlign: 'right' }}>
-            <div>ELAPSED <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{fmtMMSS(scan?.elapsed_seconds)}</span></div>
-            <div style={{ marginTop: 3 }}>ETA <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{fmtMMSS(scan?.eta_seconds)}</span></div>
+            <div>ELAPSED <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{idle ? '——:——' : fmtMMSS(scan?.elapsed_seconds)}</span></div>
+            <div style={{ marginTop: 3 }}>ETA <span style={{ color: v6.text, ...v6.mono, fontWeight: 500, fontSize: 12, marginLeft: 4 }}>{idle ? '——:——' : fmtMMSS(scan?.eta_seconds)}</span></div>
           </div>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', marginTop: 8, overflow: 'hidden' }}>
@@ -408,23 +411,39 @@ function V6InspectionDetails({ running, onPauseResume, onStop, onOpenDetail }) {
 
       {/* Inspection controls */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={onPauseResume} style={{
-          flex: 1, padding: '10px 14px',
-          background: running ? 'rgba(255,255,255,0.05)' : OMV_NAVY,
-          border: `1px solid ${running ? v6.hair : OMV_NAVY_HI}`,
-          color: '#fff', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          ...v6.mono, fontSize: 10.5, letterSpacing: 2, fontWeight: 600,
-        }}>
-          {running ? <><IconPause size={12} />PAUSE</> : <><IconPlay size={12} />RESUME</>}
-        </button>
-        <button onClick={onStop} style={{
-          padding: '10px 14px',
-          background: 'rgba(255,255,255,0.04)',
-          border: `1px solid ${v6.hair}`,
-          color: v6.mute, cursor: 'pointer',
-          display: 'grid', placeItems: 'center',
-        }}><IconStop size={12} /></button>
+        {ready ? (
+          <button onClick={onStart} style={{
+            flex: 1, padding: '12px 14px',
+            background: `linear-gradient(180deg, ${OMV_NAVY_HI}, ${OMV_NAVY})`,
+            border: `1px solid ${OMV_BLUE_GLOW}`,
+            color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            ...v6.mono, fontSize: 11, letterSpacing: 2.5, fontWeight: 700,
+            boxShadow: `0 0 18px rgba(59,125,216,0.28), inset 0 1px 0 rgba(255,255,255,0.10)`,
+          }}>
+            <IconPlay size={13} />START INSPECTION
+          </button>
+        ) : (
+          <>
+            <button onClick={onPauseResume} style={{
+              flex: 1, padding: '10px 14px',
+              background: running ? 'rgba(255,255,255,0.05)' : OMV_NAVY,
+              border: `1px solid ${running ? v6.hair : OMV_NAVY_HI}`,
+              color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              ...v6.mono, fontSize: 10.5, letterSpacing: 2, fontWeight: 600,
+            }}>
+              {running ? <><IconPause size={12} />PAUSE</> : <><IconPlay size={12} />RESUME</>}
+            </button>
+            <button onClick={onStop} style={{
+              padding: '10px 14px',
+              background: 'rgba(255,255,255,0.04)',
+              border: `1px solid ${v6.hair}`,
+              color: v6.mute, cursor: 'pointer',
+              display: 'grid', placeItems: 'center',
+            }}><IconStop size={12} /></button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -701,7 +720,7 @@ function V6ZBar({ value, onChange }) {
 }
 
 // ─── Right rail ──────────────────────────────────────────────────────
-function V6RightRail({ activeTab, onTabChange, running, onPauseResume, onStop, onOpenDetail }) {
+function V6RightRail({ activeTab, onTabChange, running, onStart, onPauseResume, onStop, onOpenDetail }) {
   const { detections } = useArgus();
   const [hoverAnomaly, setHoverAnomaly] = React.useState(null);
   // Map live detections to coverage-map pins via their normalized location.
@@ -710,7 +729,7 @@ function V6RightRail({ activeTab, onTabChange, running, onPauseResume, onStop, o
     .map(d => ({ id: d.id, x: d.locNorm.x, y: d.locNorm.y, temp: d.temp, pass: d.pass, time: d.time }));
   return (
     <div style={{
-      width: 360, flex: '0 0 360px',
+      width: 440, flex: '0 0 440px',
       borderLeft: `1px solid ${v6.hair}`,
       background: v6.surface,
       display: 'flex', flexDirection: 'column',
@@ -719,7 +738,7 @@ function V6RightRail({ activeTab, onTabChange, running, onPauseResume, onStop, o
       <V6CoverageBlock onAnomalyHover={setHoverAnomaly} anomalies={anomalies} hoverAnomaly={hoverAnomaly} />
       <V6TabToggle active={activeTab} onChange={onTabChange} />
       {activeTab === 'inspection'
-        ? <V6InspectionDetails running={running} onPauseResume={onPauseResume} onStop={onStop} onOpenDetail={onOpenDetail} />
+        ? <V6InspectionDetails running={running} onStart={onStart} onPauseResume={onPauseResume} onStop={onStop} onOpenDetail={onOpenDetail} />
         : <V6ManualPanel onResume={() => onTabChange('inspection')} />
       }
     </div>
@@ -896,6 +915,26 @@ function V6FeedCorners() {
 }
 
 // ─── Detection card (A1: cleaner — left accent border, no status pill) ──
+// Real inspection-frame thumbnail with graceful fallback. Shows the served
+// frame image (the backend exposes past / current / difference URLs); if the URL
+// is missing or the image fails to load, falls back to the placeholder
+// HistoryThumb so the card never breaks.
+function V6FrameThumb({ src, thumbMode = 'raw', anomaly = false, w, h }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]);   // retry when src changes
+  if (!src || failed) {
+    return <HistoryThumb mode={thumbMode} anomaly={anomaly} w={w} h={h} />;
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  );
+}
+
 function V6DetectionCard({ d, onClick }) {
   const pri = PRIORITY[d.priority];
   return (
@@ -924,11 +963,11 @@ function V6DetectionCard({ d, onClick }) {
       {/* Past + Current thumbs */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, flex: 1, minHeight: 0 }}>
         <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <HistoryThumb mode="raw" anomaly={false} />
+          <V6FrameThumb src={d.frames?.past} thumbMode="raw" anomaly={false} />
           <div style={{ position: 'absolute', bottom: 2, left: 3, ...v6.mono, fontSize: 7, color: '#fff', textShadow: '0 1px 2px #000', letterSpacing: 1 }}>PAST</div>
         </div>
         <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <HistoryThumb mode="raw" anomaly={true} />
+          <V6FrameThumb src={d.frames?.difference} thumbMode="raw" anomaly={true} />
           <div style={{ position: 'absolute', bottom: 2, left: 3, ...v6.mono, fontSize: 7, color: '#fff', textShadow: '0 1px 2px #000', letterSpacing: 1 }}>CURRENT</div>
         </div>
       </div>
@@ -954,7 +993,7 @@ function V6History({ onOpenDetail }) {
 
   return (
     <div style={{
-      flex: '0 0 180px',
+      flex: '0 0 220px',
       background: v6.surface,
       borderTop: `1px solid ${v6.hair}`,
       padding: '12px 22px 14px',
@@ -1061,7 +1100,7 @@ function V6AlarmModal({ detection, onAcknowledge, onSwitchManual }) {
         {/* Body */}
         <div style={{ padding: 22, display: 'flex', gap: 22 }}>
           <div style={{ width: 200, height: 150, background: '#000', flex: '0 0 200px', position: 'relative', overflow: 'hidden' }}>
-            <HistoryThumb mode="raw" anomaly={true} w={200} h={150} />
+            <V6FrameThumb src={detection.frames?.difference} thumbMode="raw" anomaly={true} w={200} h={150} />
             <div style={{ position: 'absolute', top: 8, left: 8, ...v6.mono, fontSize: 8.5, letterSpacing: 1.5, color: pri.color, background: 'rgba(0,0,0,0.5)', padding: '3px 7px', fontWeight: 700 }}>HOTSPOT</div>
           </div>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1227,6 +1266,7 @@ function V6Argus() {
     pauseScan: () => emit('pause_scan', {}),
     resumeScan: () => emit('resume_scan', {}),
     stopScan: () => emit('stop_scan', {}),
+    startScan: () => emit('start_scan', {}),
     estop: () => emit('estop', {}),
     releaseEstop: () => emit('release_estop', {}),
     acknowledge: (id, action) => emit('acknowledge_detection', { id, action }),
@@ -1246,6 +1286,7 @@ function V6Argus() {
   };
 
   const onStop = () => api.stopScan();
+  const onStart = () => api.startScan();   // idle → begin a pass (emits start_scan)
   // E-STOP is a toggle: engage when running, release (→ PAUSED) when e-stopped.
   // There is no separate release control in the UI (Argus Spec §7 leaves the
   // mechanism to the backend); the button itself releases.
@@ -1282,7 +1323,7 @@ function V6Argus() {
   return (
     <ArgusCtx.Provider value={ctxValue}>
       <div style={{
-        width: 1440, height: 900,
+        width: 1920, height: 1080,
         background: v6.canvas,
         color: v6.text,
         fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -1297,6 +1338,7 @@ function V6Argus() {
             activeTab={activeTab}
             onTabChange={onTabChange}
             running={running}
+            onStart={onStart}
             onPauseResume={onPauseResume}
             onStop={onStop}
             onOpenDetail={openDetail}

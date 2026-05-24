@@ -51,6 +51,16 @@ else
 fi
 
 echo "=== [argus] web server ==="
+# Stop any server already bound to :5000 first. Otherwise this new instance
+# can't bind, exits, and the STALE process keeps serving — so re-running this
+# script appears to do nothing (e.g. an old UI build keeps showing). A clean
+# restart must replace the running server.
+EXISTING="$(pgrep -f '[a]pp\.main' || true)"
+if [[ -n "$EXISTING" ]]; then
+    echo "[argus] stopping existing web server (pid $EXISTING)..."
+    kill $EXISTING 2>/dev/null || true
+    for _ in $(seq 1 20); do ss -ltn 2>/dev/null | grep -q ':5000' || break; sleep 0.25; done
+fi
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"; [[ -z "$IP" ]] && IP="127.0.0.1"
 echo "[argus]   open in any browser on the LAN:  http://${IP}:5000"
 cd "$PI_DIR"

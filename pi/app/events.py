@@ -68,6 +68,17 @@ def _on_set_speed(data):
     runtime.scan.set_speed((data or {}).get("speed", runtime.scan.speed))
 
 
+@socketio.on("start_scan")
+def _on_start_scan(_data=None):
+    # START INSPECTION button. Mirrors POST /api/inspection/start: flip the state
+    # machine to autonomous and spin up the capture runner, then push the new
+    # state so the UI tracks the active scan (idle → AUTONOMOUS) immediately.
+    from app.routes.inspection import _start_runner   # lazy: avoid import cycle
+    snap = runtime.scan.start()
+    _start_runner()
+    socketio.emit("scan_progress", _scan_progress_payload(snap))
+
+
 @socketio.on("pause_scan")
 def _on_pause_scan(_data=None):
     socketio.emit("scan_progress", _scan_progress_payload(runtime.scan.pause()))
@@ -80,14 +91,18 @@ def _on_resume_scan(_data=None):
 
 @socketio.on("stop_scan")
 def _on_stop_scan(_data=None):
+    from app.routes.inspection import _stop_runner   # lazy: avoid import cycle
     runtime.scan.stop()
+    _stop_runner()                       # end the pass → batch compare + persist
     socketio.emit("scan_complete", {})
     socketio.emit("scan_progress", _scan_progress_payload())
 
 
 @socketio.on("estop")
 def _on_estop(_data=None):
+    from app.routes.inspection import _stop_runner   # lazy: avoid import cycle
     runtime.scan.estop()
+    _stop_runner()                       # halt the capture loop on abort
     try:
         runtime.esp.estop()
     except ESP32Unreachable:

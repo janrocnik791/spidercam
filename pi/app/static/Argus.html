@@ -11,7 +11,7 @@
   html, body { margin: 0; padding: 0; background: #000; height: 100vh; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
   * { box-sizing: border-box; }
   #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  #design { width: 1440px; height: 900px; transform-origin: center center; }
+  #design { width: 1920px; height: 1080px; transform-origin: center center; }
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.55; transform: scale(0.85); }
@@ -31,9 +31,9 @@
 <div id="stage"><div id="design"><div id="root"></div></div></div>
 
 <script>
-  // Scale 1440×900 to fit viewport, letterboxed
+  // Scale 1920×1080 to fit viewport, letterboxed
   function fit() {
-    const s = Math.min(window.innerWidth / 1440, window.innerHeight / 900);
+    const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
     document.getElementById('design').style.transform = `scale(${s})`;
   }
   window.addEventListener('resize', fit);

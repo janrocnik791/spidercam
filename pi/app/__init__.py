@@ -7,8 +7,10 @@ client are created once at startup and shared through app.services.runtime.
 """
 
 import logging
+import os
+import re
 
-from flask import Flask, send_from_directory
+from flask import Flask, Response
 from flask_socketio import SocketIO
 
 # Defined before the blueprints are imported: several blueprint modules do
@@ -37,10 +39,41 @@ def create_app():
 
     @app.route("/")
     def index():
-        return send_from_directory(app.static_folder, "Argus.html")
+        return _serve_index(app.static_folder)
 
     _init_services(app)
     return app, socketio
+
+
+# Matches local script sources like src="v6-argus.jsx" but NOT the https://unpkg
+# CDN scripts (those contain ':' and '/', which the character class excludes).
+_LOCAL_JSX_SRC = re.compile(r'src="([^":/?#]+\.jsx)"')
+
+
+def _serve_index(static_folder):
+    """Serve Argus.html with a cache-busting ``?v=<mtime>`` appended to each
+    local ``.jsx`` ``<script src>``.
+
+    The browser caches the .jsx bundle, so after editing a component (e.g. the
+    1920×1080 canvas size) a plain reload can replay the stale copy. Stamping
+    each src with the file's mtime changes the URL whenever the file changes,
+    forcing a refetch; the HTML itself is sent ``no-store`` so this rewritten
+    page is never cached either.
+    """
+    with open(os.path.join(static_folder, "Argus.html"), encoding="utf-8") as fh:
+        html = fh.read()
+
+    def _stamp(match):
+        src = match.group(1)
+        try:
+            version = int(os.path.getmtime(os.path.join(static_folder, src)))
+        except OSError:
+            return match.group(0)            # file missing — leave src untouched
+        return f'src="{src}?v={version}"'
+
+    resp = Response(_LOCAL_JSX_SRC.sub(_stamp, html), mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 def _init_services(app):

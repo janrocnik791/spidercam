@@ -65,8 +65,9 @@ def get_frame(det_id, frame_type):
     det = runtime.detections.get(det_id)
     if det is None:
         return jsonify({"error": "not found"}), 404
-    # The comparator saved these under data/inspections/<pass>/<x>_<y>_<kind>.jpg
-    # and the detection record carries their resolved paths.
+    # past/difference are saved by the comparator as <x>_<y>_baseline.jpg /
+    # <x>_<y>_diff.jpg; current reuses the <x>_<y>.jpg the runner captured. The
+    # detection record carries their resolved on-disk paths.
     path = (det.get("frame_files") or {}).get(frame_type)
     if not path or not os.path.isfile(path):
         return jsonify({"error": "frame not available"}), 404

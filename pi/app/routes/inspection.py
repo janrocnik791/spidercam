@@ -116,13 +116,28 @@ def _alert_to_detection(alert, idx):
 
     The Y8 loopback feed carries no calibrated temperatures, so the record
     exposes the raw Y8 diff delta (0–255) and the gantry coordinates rather than
-    fabricating °C values; priority scales with the flagged region's size.
+    fabricating °C values; priority scales with the flagged region's size. The
+    ``tempVal`` it does expose is an APPROXIMATION derived from the same Y8→°C
+    window the camera uses for frame_stats — never a calibrated reading.
     """
     bx, by, bw, bh = alert.bbox
     area = bw * bh
     priority = ("critical" if area >= 2000 else
                 "high" if area >= 800 else
                 "medium" if area >= 200 else "low")
+
+    # tempVal — APPROXIMATE °C only. There is no calibrated temperature for a Y8
+    # diff, so map the max Y8 intensity delta (0–255) through the SAME linear
+    # [FLIR_TEMP_MIN_C, FLIR_TEMP_MAX_C] window the camera uses for its frame_stats
+    # min/max (see camera_flir._stats_from_grey). Keeps the number consistent with
+    # what the rest of Argus shows; it is not a measurement.
+    span = config.FLIR_TEMP_MAX_C - config.FLIR_TEMP_MIN_C
+    temp_val = round(config.FLIR_TEMP_MIN_C + (alert.max_delta / 255.0) * span, 1)
+
+    # confidence — flagged-region size relative to the alert threshold. The alert
+    # only carries its bounding box, so use the bbox area as the region-size proxy.
+    confidence = round(min(1.0, area / (config.MIN_ALERT_AREA * 10)), 2)
+
     now = datetime.now()
     loc_x = max(0.0, min(1.0, alert.x / config.PLANT_W_MM))
     loc_y = max(0.0, min(1.0, alert.y / config.PLANT_H_MM))
@@ -135,6 +150,10 @@ def _alert_to_detection(alert, idx):
         "pass": f"{idx:03d}",
         "time": now.strftime("%H:%M"),
         "date": now.strftime("%Y-%m-%d"),
+        "tempVal": temp_val,                         # approx °C (Y8→°C window map)
+        "delta": round(alert.max_delta, 1),          # Y8 0–255 intensity delta
+        "confidence": confidence,                    # 0–1, from flagged-region size
+        "area": area,                                # flagged bbox area (px²)
         "max_delta": round(alert.max_delta, 1),     # Y8 0–255 intensity delta
         "bbox": [bx, by, bw, bh],
         "location": {"x": alert.x, "y": alert.y, "z": z},
@@ -156,6 +175,6 @@ def _frame_files(diff_path):
     stem = diff_path[:-len("_diff.jpg")]
     return {
         "past": f"{stem}_baseline.jpg",      # previous pass over this cell
-        "current": f"{stem}_current.jpg",    # this pass (anomaly visible)
+        "current": f"{stem}.jpg",            # this pass — the frame inspection_runner saved
         "difference": diff_path,             # Δ overlay
     }

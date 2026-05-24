@@ -31,7 +31,10 @@ class ScanState:
     # mode ∈ {autonomous, paused, manual, idle, estop, complete}
     def __init__(self):
         self._lock = threading.RLock()
-        self.mode = "autonomous"
+        # Boot idle: no scan runs (and tick() advances nothing) until the
+        # operator calls POST /api/inspection/start. Booting into "autonomous"
+        # made the server auto-start a (simulated) pass on every boot.
+        self.mode = "idle"
         self.estopped = False
         self.speed = config.DEFAULT_SPEED
         self.progress = 0.0
@@ -142,6 +145,23 @@ class ScanState:
             "y": round(y_norm * config.PLANT_H_MM),
             "z": config.Z_MAX_MM // 2,
         }
+
+    def cell_center(self, cell_index):
+        """Deterministic (x, y) in mm for a 1-based serpentine cell index.
+
+        Used to name captured frames by cell so the same cell maps to the same
+        filename across passes (making the pass-to-pass diff meaningful). Mirrors
+        the sweep direction of ``_sim_position`` and is purely time-derived — no
+        ESP position involved. To use the real gantry later, feed its (x, y) into
+        the same filename instead."""
+        cells_per_pass = max(1, self.total_cells // self.total_passes)
+        c = max(0, min(self.total_cells - 1, int(cell_index) - 1))
+        row = c // cells_per_pass
+        col = c % cells_per_pass
+        col_eff = col if (row % 2 == 0) else (cells_per_pass - 1 - col)
+        x = round((col_eff + 0.5) / cells_per_pass * config.PLANT_W_MM)
+        y = round((row + 0.5) / self.total_passes * config.PLANT_H_MM)
+        return x, y
 
     # ── snapshots ────────────────────────────────────────────────────────────────
     @property

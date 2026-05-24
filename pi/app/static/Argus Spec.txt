@@ -39,12 +39,18 @@ Software shape (suggested):
     + motor command bridge to the ESP32.
   - Detection pipeline: runs on the Pi, emits classified detection events
     to the UI when something is found.
-  - Argus.html: single-page client, served by the Pi, scales 1440x900 to
+  - Argus.html: single-page client, served by the Pi, scales 1920x1080 to
     fit the viewport.
 
 Modes:
-  - AUTONOMOUS   Default mode. Gantry follows a planned serpentine scan
-                 path. Detection pipeline runs continuously.
+  - IDLE         No scan has started in this session (or scan was
+                 stopped). Gantry is parked, detection pipeline is
+                 still emitting events but they accumulate without
+                 affecting a scan. Operator must press START
+                 INSPECTION to begin.
+  - AUTONOMOUS   Default running mode. Gantry follows a planned
+                 serpentine scan path. Detection pipeline runs
+                 continuously.
   - MANUAL       Operator controls the gantry by hand. Autonomous scan
                  is paused while in this mode.
   - PAUSED       Autonomous scan is held but operator has not switched
@@ -59,7 +65,7 @@ the operator switches tabs, opens an alarm response, or presses controls.
   2. SCREEN MAP
 --------------------------------------------------------------------------------
 
-The 1440x900 canvas is divided into 4 functional regions, top to bottom,
+The 1920x1080 canvas is divided into 4 functional regions, top to bottom,
 left to right:
 
   +---------------------------------------------------------------+
@@ -67,7 +73,7 @@ left to right:
   |    Argus mark | mission line | status icons | E-STOP          |
   +-------------------------------------------+-------------------+
   |                                           | C. RIGHT RAIL     |
-  |  B. HERO THERMAL FEED                     |  (360 px wide)    |
+  |  B. HERO THERMAL FEED                     |  (440 px wide)    |
   |     (left side, fills available space)    |  - Coverage map   |
   |     Live thermal/optical image            |  - Tab toggle     |
   |     HUD overlays                          |    INSPECTION /   |
@@ -75,7 +81,7 @@ left to right:
   |                                           |  - Active tab     |
   |                                           |    content        |
   +-------------------------------------------+-------------------+
-  | D. HISTORY STRIP (180 px tall)                                |
+  | D. HISTORY STRIP (220 px tall)                                |
   |    "Detections" header + VIEW ALL | row of CRITICAL/HIGH cards|
   |    | "+N MORE" chip                                           |
   +---------------------------------------------------------------+
@@ -275,6 +281,7 @@ C.3  INSPECTION TAB CONTENT
      C.3.1 STATUS HEADER
            Label "INSPECTION" on the left.
            On the right: a pill with state dot + text:
+              READY (gray dot)          scan has not started yet
               AUTONOMOUS (green dot)    scan is running
               PAUSED (amber dot)        scan is held
            This pill is the ground truth — if the operator is in the
@@ -283,9 +290,11 @@ C.3  INSPECTION TAB CONTENT
 
      C.3.2 TITLE LINE
            Uppercase Helvetica label reflecting state:
+              "READY TO SCAN" when idle (not started)
               "SCAN ACTIVE"   when running
               "STANDING BY"   when paused
-           Below: pass and cell counter, e.g. "PASS 04 OF 12 · CELL 40 OF 96"
+           Below: pass and cell counter, e.g. "PASS 04 OF 12 · CELL 40 OF 96".
+           When idle, the counter is replaced with "AWAITING START".
            Data needed: current_pass, total_passes, current_cell, total_cells
 
      C.3.3 PROGRESS BIG NUMBER
@@ -311,11 +320,27 @@ C.3  INSPECTION TAB CONTENT
            that detection.
 
      C.3.6 ACTION BUTTONS (bottom)
-           PAUSE / RESUME    toggles autonomous scan
-           STOP              ends the current scan session
-                             (different from E-STOP — STOP is a
-                             clean shutdown of the current mission,
-                             not a hardware halt)
+           Layout depends on state:
+
+           IDLE state — single full-width button:
+              START INSPECTION   Begins the autonomous scan from the
+                                 planned path's first cell. Visually
+                                 emphasized (navy fill, blue glow border)
+                                 because this is the primary action when
+                                 the system is at rest.
+                                 On press: state transitions IDLE →
+                                 AUTONOMOUS, gantry begins moving.
+
+           AUTONOMOUS / PAUSED state — two buttons:
+              PAUSE / RESUME    toggles autonomous scan
+              STOP              ends the current scan session
+                                (different from E-STOP — STOP is a
+                                soft end, gantry parks, state returns
+                                to IDLE, history is preserved).
+                                After STOP the only way to resume is
+                                to press START INSPECTION again.
+                                Clean shutdown of the current mission,
+                                not a hardware halt.
 
 C.4  MANUAL TAB CONTENT
      Shown when MANUAL is active. Switching here ALWAYS pauses

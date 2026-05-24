@@ -186,8 +186,11 @@ class FLIROneProCamera(CameraBase):
             with open(path) as f:
                 parts = f.read().split()
             mn, avg, mx, spot = (float(p) for p in parts[:4])
-            return {"min": round(mn, 1), "avg": round(avg, 1),
-                    "max": round(mx, 1), "spot": round(spot, 1)}
+            # The driver's Planck constants are generic placeholders, so its °C
+            # run several degrees high. Apply the empirical linear calibration
+            # (config.FLIR_TEMP_SCALE / FLIR_TEMP_OFFSET_C) before reporting.
+            cal = lambda t: round(config.FLIR_TEMP_SCALE * t + config.FLIR_TEMP_OFFSET_C, 1)
+            return {"min": cal(mn), "avg": cal(avg), "max": cal(mx), "spot": cal(spot)}
         except (OSError, ValueError):
             return None
 
