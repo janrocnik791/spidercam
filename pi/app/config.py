@@ -6,10 +6,15 @@ All tuneable values live here. Never hardcode these elsewhere.
 import os
 
 # ── ESP32 ─────────────────────────────────────────────────────────────────────
-# Set this to the IP address printed by the ESP32 on Serial Monitor at boot.
+# Reach the ESP32 motor controller by its mDNS hostname rather than a raw IP, so
+# the link keeps working when the phone-hotspot DHCP hands it a new address — it
+# re-resolves "spidercam.local" by name (the ESP32 advertises this via ESPmDNS;
+# it also pins a static IP as a fallback). Override ESP32_IP with a bare host or
+# IP (NO scheme — the http:// is added below) if mDNS isn't available, e.g.
+# ESP32_IP=192.168.85.85.
 ESP32_IP   = os.getenv("ESP32_IP", "spidercam.local")
 ESP32_PORT = int(os.getenv("ESP32_PORT", 80))
-ESP32_BASE_URL = f"http://{ESP32_IP}:{ESP32_PORT}"
+ESP32_BASE_URL = f"http://{ESP32_IP}:{ESP32_PORT}"   # -> http://spidercam.local:80
 
 # Timeout in seconds for each HTTP call to the ESP32.
 ESP32_TIMEOUT = 5

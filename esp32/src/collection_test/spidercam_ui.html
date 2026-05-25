@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SpiderCam Control</title>
+<style>
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #0f0f13;
+  --surface:  #1a1a24;
+  --border:   #2d2d3d;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --blue:     #3b82f6;
+  --blue-dim: #1d4ed8;
+  --green:    #22c55e;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --red-dim:  #991b1b;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 16px;
+  min-height: 100vh;
+}
+h1 { font-size: 20px; font-weight: 700; color: var(--blue); }
+
+/* ── Connection bar ──────────────────────────────────────────────────────── */
+.conn-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.conn-bar label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.conn-bar input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 160px;
+}
+.conn-bar input:focus { outline: none; border-color: var(--blue); }
+.dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.connecting   { background: var(--amber); }
+.dot.disconnected { background: var(--red); }
+#conn-label { font-size: 13px; color: var(--muted); }
+
+/* ── State bar ───────────────────────────────────────────────────────────── */
+#state-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+#state-bar span { color: var(--text); font-weight: 600; }
+
+/* ── Main layout ─────────────────────────────────────────────────────────── */
+.main-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+/* ── Map ─────────────────────────────────────────────────────────────────── */
+canvas#map {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: #12121e;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ── Z bar ───────────────────────────────────────────────────────────────── */
+.z-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.z-tick { font-size: 11px; color: var(--muted); }
+#z-bg {
+  width: 30px;
+  height: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+#z-fill {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(to top, var(--blue), #60a5fa);
+  border-radius: 6px;
+  transition: height 0.1s;
+  height: 0%;
+}
+#z-val { font-size: 13px; color: var(--blue); font-weight: 600; }
+
+/* ── Right column (coords + controls) ───────────────────────────────────── */
+.right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-width: 200px;
+}
+
+/* ── Coordinate readout ──────────────────────────────────────────────────── */
+.coord-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  text-align: center;
+}
+.coord-item .lbl { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.coord-item .val { font-size: 18px; font-weight: 700; color: var(--text); }
+.coord-item .unit { font-size: 11px; color: var(--muted); }
+
+/* ── Inspection progress ─────────────────────────────────────────────────── */
+.progress-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.progress-track {
+  background: var(--bg);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+#progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 999px;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+/* ── Manual control ──────────────────────────────────────────────────────── */
+.control-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.control-box h3 { font-size: 12px; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: .06em; margin-bottom: 12px; }
+.control-inner {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* D-pad */
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+}
+.dpad-btn {
+  width: 44px; height: 44px;
+  background: #252535;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, opacity 0.2s;
+  user-select: none;
+}
+.dpad-btn:hover:not(:disabled) { background: #2e2e48; }
+.dpad-btn:active:not(:disabled) { background: var(--blue-dim); }
+.dpad-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.dpad-center { background: #1a1a28 !important; cursor: default; }
+/* Z buttons */
+.z-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.z-btns label { font-size: 11px; color: var(--muted); text-align: center; }
+.z-btn {
+  width: 54px; height: 44px;
+  background: #252535;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, opacity 0.2s;
+}
+.z-btn:hover:not(:disabled) { background: #2e2e48; }
+.z-btn:active:not(:disabled) { background: var(--blue-dim); }
+.z-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.step-note { font-size: 11px; color: var(--muted); align-self: flex-end; }
+
+/* ── Hardware E-stop indicator ───────────────────────────────────────────── */
+.estop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  border: 1px solid transparent;
+  float: right;
+}
+.estop-ok {
+  background: #14532d33;
+  border-color: #22c55e55;
+  color: var(--green);
+}
+.estop-ok::before   { content: '●'; font-size: 9px; }
+.estop-active {
+  background: #7f1d1d55;
+  border-color: var(--red);
+  color: var(--red);
+  animation: estop-blink 0.4s steps(1) infinite;
+}
+.estop-active::before { content: '●'; font-size: 9px; }
+@keyframes estop-blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.action-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.btn {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn:hover:not(:disabled) { opacity: 0.85; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+#btn-start { background: var(--blue); color: #fff; }
+#btn-stop  { background: var(--red);  color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>SpiderCam Control</h1>
+
+<!-- Connection bar -->
+<div class="conn-bar">
+  <label for="ip-input">ESP32 IP:</label>
+  <input id="ip-input" type="text" placeholder="192.168.x.x" value="">
+  <button class="btn" style="flex:0;min-width:90px;padding:6px 14px;font-size:13px;
+          background:var(--blue);color:#fff;" onclick="toggleConnect()">Connect</button>
+  <div class="dot" id="conn-dot"></div>
+  <span id="conn-label">Disconnected</span>
+</div>
+
+<!-- State bar -->
+<div id="state-bar">
+  State: <span id="state-text">—</span>
+  <span id="estop-pill" class="estop-pill estop-ok">ESTOP OK</span>
+</div>
+
+<!-- Main visualisation row -->
+<div class="main-row">
+  <canvas id="map" width="300" height="300"></canvas>
+
+  <!-- Z depth bar -->
+  <div class="z-wrap">
+    <div id="z-val">— cm</div>
+    <div class="z-tick">0</div>
+    <div id="z-bg"><div id="z-fill"></div></div>
+    <div class="z-tick">94 cm</div>
+  </div>
+
+  <!-- Right column -->
+  <div class="right-col">
+
+    <!-- XYZ readout -->
+    <div class="coord-box">
+      <div class="coord-item">
+        <div class="lbl">X</div>
+        <div class="val" id="cx">—</div>
+        <div class="unit">cm</div>
+      </div>
+      <div class="coord-item">
+        <div class="lbl">Y</div>
+        <div class="val" id="cy">—</div>
+        <div class="unit">cm</div>
+      </div>
+      <div class="coord-item">
+        <div class="lbl">Z</div>
+        <div class="val" id="cz">—</div>
+        <div class="unit">cm</div>
+      </div>
+    </div>
+
+    <!-- Inspection progress -->
+    <div class="progress-wrap">
+      <div class="progress-header">
+        <span>Inspection progress</span>
+        <span id="wp-label">0 / 144</span>
+      </div>
+      <div class="progress-track">
+        <div id="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Manual control -->
+    <div class="control-box">
+      <h3>Manual control (step: 10 cm)</h3>
+      <div class="control-inner">
+        <!-- XY D-pad -->
+        <div class="dpad">
+          <div></div>
+          <button class="dpad-btn" id="dp-yn" title="Y −10" onclick="dpad(0,-10,0)">▲</button>
+          <div></div>
+          <button class="dpad-btn" id="dp-xn" title="X −10" onclick="dpad(-10,0,0)">◀</button>
+          <div class="dpad-btn dpad-center" style="font-size:11px;color:var(--muted)">XY</div>
+          <button class="dpad-btn" id="dp-xp" title="X +10" onclick="dpad(10,0,0)">▶</button>
+          <div></div>
+          <button class="dpad-btn" id="dp-yp" title="Y +10" onclick="dpad(0,10,0)">▼</button>
+          <div></div>
+        </div>
+        <!-- Z buttons -->
+        <div class="z-btns">
+          <label>Z up</label>
+          <button class="z-btn" id="dp-zu" title="Z −10" onclick="dpad(0,0,-10)">▲</button>
+          <button class="z-btn" id="dp-zd" title="Z +10" onclick="dpad(0,0,10)">▼</button>
+          <label>Z dn</label>
+        </div>
+        <div class="step-note">Only active<br>when HOMED</div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="action-row">
+      <button class="btn" id="btn-start" disabled onclick="startInspection()">▶ Start Inspection</button>
+      <button class="btn" id="btn-stop"  disabled onclick="emergencyStop()">⏹ Emergency Stop</button>
+    </div>
+
+  </div><!-- end right-col -->
+</div><!-- end main-row -->
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const FRAME     = 200;   // cm
+const FRAME_H   = 94;    // cm Z max
+const STEP      = 10;    // cm per D-pad press
+const CW        = 300;   // canvas px
+const MARGIN    = 22;    // canvas margin px
+const SCALE     = (CW - 2 * MARGIN) / FRAME;
+const TOTAL_WP  = 144;
+
+const MOTORS = [
+  { x: 0,   y: 0,   label: 'M1' },
+  { x: 0,   y: 200, label: 'M2' },
+  { x: 200, y: 200, label: 'M3' },
+  { x: 200, y: 0,   label: 'M4' },
+];
+
+const STATE_MSG = {
+  UNINIT:           'Waiting for centre level switch…',
+  HOMED:            'System homed — ready for commands.',
+  MOVING_TO_START:  'Moving to inspection start position…',
+  READY_TO_INSPECT: 'Ready — beginning inspection…',
+  INSPECTING:       'Inspection in progress…',
+  INSPECTION_DONE:  'Inspection complete.',
+  MANUAL_MOVING:    'Manual move in progress…',
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws        = null;
+let curX      = null;
+let curY      = null;
+let curZ      = null;
+let curState  = '';
+let reconnTimer = null;
+
+// ── Canvas ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('map');
+const ctx    = canvas.getContext('2d');
+
+function toCanvas(x, y) {
+  return [MARGIN + x * SCALE, MARGIN + y * SCALE];
+}
+
+function drawMap(px, py) {
+  ctx.clearRect(0, 0, CW, CW);
+
+  // Frame border
+  ctx.strokeStyle = '#2d2d3d';
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(MARGIN, MARGIN, FRAME * SCALE, FRAME * SCALE);
+
+  // Subtle grid lines every 40 cm
+  ctx.strokeStyle = '#1e1e2e';
+  ctx.lineWidth   = 1;
+  [40, 80, 120, 160].forEach(function(v) {
+    const sv = MARGIN + v * SCALE;
+    ctx.beginPath(); ctx.moveTo(sv, MARGIN); ctx.lineTo(sv, CW - MARGIN); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(MARGIN, sv); ctx.lineTo(CW - MARGIN, sv); ctx.stroke();
+  });
+
+  // Motor corner dots + labels
+  MOTORS.forEach(function(m) {
+    const c  = toCanvas(m.x, m.y);
+    const ox = m.x > 100 ? -28 : 8;
+    const oy = m.y > 100 ? -8  : 16;
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath(); ctx.arc(c[0], c[1], 5, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle   = '#f59e0b';
+    ctx.font        = '11px sans-serif';
+    ctx.textAlign   = 'left';
+    ctx.fillText(m.label, c[0] + ox, c[1] + oy);
+  });
+
+  // Unit position
+  if (px !== null && py !== null) {
+    const c = toCanvas(px, py);
+    ctx.shadowColor = '#3b82f6';
+    ctx.shadowBlur  = 16;
+    ctx.fillStyle   = '#3b82f6';
+    ctx.beginPath(); ctx.arc(c[0], c[1], 9, 0, 2 * Math.PI); ctx.fill();
+    ctx.shadowBlur  = 0;
+    // White crosshair centre dot
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(c[0], c[1], 3, 0, 2 * Math.PI); ctx.fill();
+  }
+}
+drawMap(null, null);
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+function getIP() {
+  return document.getElementById('ip-input').value.trim();
+}
+
+function setConnUI(status) {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  dot.className   = 'dot ' + status;
+  label.textContent = { connected: 'Connected', connecting: 'Connecting…',
+                        disconnected: 'Disconnected' }[status] || status;
+}
+
+function connect() {
+  const ip = getIP();
+  if (!ip) { alert('Enter the ESP32 IP address first.'); return; }
+  if (ws && ws.readyState <= 1) { ws.close(); return; }
+
+  setConnUI('connecting');
+  ws = new WebSocket('ws://' + ip + '/ws');
+
+  ws.onopen = function() {
+    setConnUI('connected');
+    document.getElementById('btn-stop').disabled = false;
+    if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type !== 'pos') return;
+      handlePos(d);
+    } catch (_) {}
+  };
+
+  ws.onclose = function() {
+    setConnUI('disconnected');
+    curState = '';
+    updateControlEnables();
+    document.getElementById('btn-stop').disabled = true;
+    // Auto-reconnect after 2 s
+    reconnTimer = setTimeout(function() {
+      if (getIP()) connect();
+    }, 2000);
+  };
+
+  ws.onerror = function() { ws.close(); };
+}
+
+function toggleConnect() {
+  if (ws && ws.readyState <= 1) {
+    if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
+    ws.close();
+    setConnUI('disconnected');
+  } else {
+    connect();
+  }
+}
+
+// ── Position update ───────────────────────────────────────────────────────────
+function handlePos(d) {
+  curX     = d.x;
+  curY     = d.y;
+  curZ     = d.z;
+  curState = d.state;
+  const wp = (typeof d.wp === 'number') ? d.wp : 0;
+
+  // Map
+  drawMap(d.x, d.y);
+
+  // Z bar (0 = top, 94 = bottom → fill from bottom)
+  const zPct = Math.min(100, Math.max(0, (d.z / FRAME_H) * 100));
+  document.getElementById('z-fill').style.height = zPct + '%';
+  document.getElementById('z-val').textContent   = d.z.toFixed(1) + ' cm';
+
+  // Coords
+  document.getElementById('cx').textContent = d.x.toFixed(1);
+  document.getElementById('cy').textContent = d.y.toFixed(1);
+  document.getElementById('cz').textContent = d.z.toFixed(1);
+
+  // State
+  document.getElementById('state-text').textContent =
+    STATE_MSG[d.state] || d.state;
+
+  // Hardware E-stop indicator
+  const pill = document.getElementById('estop-pill');
+  if (d.estop) {
+    pill.className   = 'estop-pill estop-active';
+    pill.textContent = 'ESTOP PRESSED';
+  } else {
+    pill.className   = 'estop-pill estop-ok';
+    pill.textContent = 'ESTOP OK';
+  }
+
+  // Inspection progress
+  const done = (d.state === 'INSPECTING' || d.state === 'INSPECTION_DONE') ? wp : 0;
+  const pct  = Math.min(100, (done / TOTAL_WP) * 100);
+  document.getElementById('wp-label').textContent    = done + ' / ' + TOTAL_WP;
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  updateControlEnables();
+}
+
+// ── Enable / disable controls ─────────────────────────────────────────────────
+const manualIds = ['dp-yn','dp-yp','dp-xn','dp-xp','dp-zu','dp-zd'];
+
+function updateControlEnables() {
+  const homed     = (curState === 'HOMED');
+  const connected = (ws && ws.readyState === 1);
+
+  document.getElementById('btn-start').disabled = !homed;
+  manualIds.forEach(function(id) {
+    document.getElementById(id).disabled = !homed;
+  });
+  // Stop always active when connected
+  document.getElementById('btn-stop').disabled = !connected;
+}
+
+// ── Send helpers ──────────────────────────────────────────────────────────────
+function send(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function startInspection() { send({ cmd: 'start_inspection' }); }
+
+function emergencyStop() { send({ cmd: 'stop' }); }
+
+function dpad(dx, dy, dz) {
+  if (curX === null) return;
+  const nx = Math.min(200, Math.max(0, curX + dx));
+  const ny = Math.min(200, Math.max(0, curY + dy));
+  const nz = Math.min(94,  Math.max(0, curZ + dz));
+  send({ cmd: 'move', x: parseFloat(nx.toFixed(1)),
+                      y: parseFloat(ny.toFixed(1)),
+                      z: parseFloat(nz.toFixed(1)) });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+setConnUI('disconnected');
+updateControlEnables();
+</script>
+</body>
+</html>

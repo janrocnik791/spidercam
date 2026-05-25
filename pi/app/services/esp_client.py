@@ -10,13 +10,24 @@ gracefully instead of crashing. The ESP32 is frequently *not* connected during
 bring-up, so this is the expected path, not an error.
 
 Assumed ESP32 firmware HTTP surface (mirrors the Argus control needs):
-    GET  /ping       -> {"status": "ok"}
-    POST /move       {"direction","speed"} -> {"x","y","z", ...}
-    POST /stop       -> {...}
-    POST /home       -> {...}
-    GET  /position   -> {"x","y","z"}
-    GET  /status     -> {"motors","tension", ...}
-    POST /estop      -> {...}
+    GET  /ping              -> {"status": "ok"}
+    POST /move              {"direction","speed"} -> {"x","y","z", ...}
+    POST /stop              -> {...}
+    POST /home              -> {...}
+    GET  /position          -> {"x","y","z"}
+    GET  /status            -> {"motors","tension", ...}
+    POST /start_inspection  -> {"status": "ok"}
+    POST /pause             -> {"status": "ok"}
+    POST /resume            -> {"status": "ok"}
+    POST /abort             -> {"status": "ok"}
+    POST /estop             -> {"status": "ok"}
+    POST /release           -> {"status": "ok"}
+
+The inspection-control commands (start/pause/resume/abort/estop) are
+fire-and-forget: the Pi-side scan state machine is the source of truth, so if
+the controller is offline the command is logged as a warning and dropped rather
+than raised — the UI/scan still advances. The query/motion methods still raise
+:class:`ESP32Unreachable` so their callers can react.
 """
 
 import logging
@@ -58,6 +69,19 @@ class ESP32Client:
         except ValueError:
             return {}
 
+    def _fire_and_forget(self, path, label):
+        """POST an inspection-control command, swallowing unreachability.
+
+        Returns True if the ESP32 acknowledged, False if it was offline (logged
+        as a warning). These commands must never block or crash the Pi-side scan
+        state machine — the scan/UI updates regardless of controller status."""
+        try:
+            self._request("POST", path)
+            return True
+        except ESP32Unreachable as exc:
+            log.warning("ESP32 %s command not delivered (POST %s): %s", label, path, exc)
+            return False
+
     # ── public API ───────────────────────────────────────────────────────────────
     def send_command(self, direction, speed=None):
         """POST /move. Returns the ESP32 response (includes updated x/y/z)."""
@@ -84,9 +108,32 @@ class ESP32Client:
         """GET /status -> motor state, cable tension, etc."""
         return self._request("GET", "/status")
 
+    # ── inspection control (fire-and-forget) ──────────────────────────────────────
+    def start_inspection(self):
+        """POST /start_inspection — begin the autonomous pass on the controller."""
+        return self._fire_and_forget("/start_inspection", "start")
+
+    def pause(self):
+        """POST /pause — pause the autonomous pass."""
+        return self._fire_and_forget("/pause", "pause")
+
+    def resume(self):
+        """POST /resume — resume the autonomous pass."""
+        return self._fire_and_forget("/resume", "resume")
+
+    def abort(self):
+        """POST /abort — abort the current pass."""
+        return self._fire_and_forget("/abort", "abort")
+
     def estop(self):
-        """POST /estop — hard halt, motors brake and hold tension."""
-        return self._request("POST", "/estop")
+        """POST /estop — hard halt, motors brake and hold tension. Fire-and-forget:
+        returns True if delivered, False if the controller was offline (the Pi
+        still latches E-stop locally regardless)."""
+        return self._fire_and_forget("/estop", "ESTOP")
+
+    def release(self):
+        """POST /release — clear a latched E-stop on the controller."""
+        return self._fire_and_forget("/release", "release")
 
     def ping(self):
         """Return True iff the ESP32 responds with {"status": "ok"}."""

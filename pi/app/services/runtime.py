@@ -61,13 +61,14 @@ class ScanState:
 
     def resume(self):
         with self._lock:
-            if not self.estopped:
-                # A finished (complete) or stopped (idle) scan restarts from 0,
-                # so RESUME always does something useful. A merely paused scan
-                # picks up where it left off.
-                if self.mode in ("complete", "idle") or self.progress >= 1.0:
-                    self.progress = 0.0
-                    self._position_from_esp = False
+            # RESUME only un-pauses a scan that is genuinely mid-pass. A finished
+            # (complete) or never-started (idle) scan must NOT be revived here:
+            # resume() does not spin up an InspectionRunner, so flipping such a
+            # scan back to "autonomous" would advance the progress sim with no
+            # capture attached — a phantom pass that records zero frames. Begin a
+            # fresh pass through start() + _start_runner() (the START INSPECTION
+            # button) instead, which starts the sim and the runner together.
+            if not self.estopped and self.mode == "paused":
                 self.mode = "autonomous"
                 self._last_tick = time.monotonic()
             return self.snapshot()

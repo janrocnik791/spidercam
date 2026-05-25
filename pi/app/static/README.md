@@ -4,6 +4,12 @@ Browser-based operator UI for the cable-driven SpiderCam thermal
 inspection gantry at OMV. This bundle is the front-end as it stands,
 plus the functional spec for backend wiring.
 
+> **Status (May 2026):** the backend is now wired. The UI runs on **live
+> SocketIO data** from the Pi — detections, scan progress, head position,
+> system status, and both camera feeds — not demo data. The demo seams listed
+> under *Demo seams — now wired* below have been replaced; that section is kept
+> as a record. See the repo-root `README.md` for the overall project status.
+
 ## Start here
 
 1. **`Argus Spec.txt`** — read first. Source of truth for FUNCTIONALITY:
@@ -22,31 +28,26 @@ data shim in `v6-data.jsx`) to feed the UI what it expects.
 |---|---|
 | `Argus.html` | Entry point. Loads scripts, mounts `<V6Argus />`, scales 1440×900 to fit. |
 | `shared.jsx` | Icons, `ThermalFeed` SVG, `HistoryThumb` SVG, coverage-map primitives. |
-| `v6-data.jsx` | **Demo dataset.** Exports `DETECTIONS`, `PRIORITY`, `STATUS`. Replace with live data when wiring the backend — the schema is the contract (see §5 of the spec). |
+| `v6-data.jsx` | Exports `PRIORITY`, `STATUS` (static colour/label maps) and `DETECTIONS` — **now empty**: live detection records arrive over the SocketIO `new_detection` event. The schema is still the contract (see §5 of the spec). |
 | `v6-argus.jsx` | Main app: header, hero feed, right rail (coverage + inspection + manual tabs), history strip, alarm modal, root `V6Argus` component. |
 | `v6-history-detail.jsx` | Full-overlay history archive page (filter bar, list, detail view). |
 | `Argus Spec.txt` | Functional spec — read this. |
 | `Argus Mobile.html` | Companion phone view (not loaded by `Argus.html`). |
 | `Argus Logo.html` | Logo brand sheet with iteration variants. |
 
-## What to replace when wiring real hardware
+## Demo seams — now wired
 
-Search for these in the code — they are the demo seams the spec calls
-out in §10:
+These were the demo seams the spec calls out in §10. All are now fed by live
+backend data over SocketIO:
 
-- `v6-argus.jsx` — root `V6Argus` fires a demo alarm 2.5 s after mount
-  using `DETECTIONS[0]`. Replace with a real detection-event subscription.
-- `v6-data.jsx` — `DETECTIONS` array is hand-crafted. Replace with a
-  live list maintained from backend events.
-- `v6-argus.jsx` — autonomous progress (`0.42` = 42 %) is hard-coded.
-  Wire to real scan progress.
-- `v6-argus.jsx` — positions (`X 0842`, `Y 0314`, `Z 1280`, etc.) are
-  demo strings. Wire to live motor encoder positions.
-- `v6-argus.jsx` — status icon states in `V6Header` are hard-coded
-  (3 OK + 1 WARN). Wire to real subsystem health.
-- `v6-argus.jsx` — mission line clock (`14:22:08 UTC`) is hard-coded.
-  Tick at 1 Hz.
-- `v6-argus.jsx` — REC indicator timer + fps are hard-coded.
+- **Detections** — the demo alarm timer is gone; alarms now raise from the
+  `new_detection` event, and `DETECTIONS` in `v6-data.jsx` is empty.
+- **Scan progress** — wired to `scan_progress` (the `0.42` literal that remains
+  is only a default argument on `V6SweptCoverage`, always overridden by live data).
+- **Head position** — wired to `position_update`.
+- **Subsystem health** icons in `V6Header` — wired to `status_update`.
+- **Mission clock** ticks at 1 Hz in the browser; the REC timer and fps update
+  from the live stream.
 
 ## Transport
 

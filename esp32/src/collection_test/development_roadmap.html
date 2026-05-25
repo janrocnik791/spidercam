@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argus Autonomous — Development Roadmap</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f8f8; color: #1a1a1a; padding: 32px 24px; max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; color: #111; margin-bottom: 4px; letter-spacing: -0.3px; }
+  .subtitle { font-size: 13px; color: #666; margin-bottom: 10px; }
+  .meta { font-size: 11px; color: #aaa; margin-bottom: 24px; }
+  .note { background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #78350f; margin-bottom: 20px; }
+  .legend { display: flex; gap: 18px; margin-bottom: 20px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #555; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .phases { display: flex; flex-direction: column; gap: 10px; }
+  .phase { border: 1.5px solid #e0e0e0; border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; background: #fff; }
+  .phase:hover { border-color: #aaa; }
+  .phase.active { border-color: var(--accent); }
+  .phase-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #fafafa; }
+  .phase.active .phase-header { background: var(--accent-light); }
+  .badge { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; background: var(--accent); }
+  .phase-title { font-size: 14px; font-weight: 600; flex: 1; }
+  .phase-file { font-size: 10px; color: #888; font-family: 'Menlo', 'Consolas', monospace; background: #ebebeb; padding: 2px 7px; border-radius: 4px; }
+  .phase-arrow { font-size: 11px; color: #aaa; transition: transform 0.2s; margin-left: 4px; }
+  .phase.active .phase-arrow { transform: rotate(90deg); }
+  .phase-body { display: none; padding: 14px 16px 16px; border-top: 1px solid #e8e8e8; }
+  .phase.active .phase-body { display: block; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
+  .tag { font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .tag-new { background: #e8f4ff; color: #1a6fb3; }
+  .tag-build { background: #fff3e0; color: #a05000; }
+  .tag-test { background: #e8f8ee; color: #1a7a40; }
+  .tag-final { background: #f0fdf4; color: #15803d; }
+  .items { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .items li { font-size: 12.5px; color: #333; padding-left: 16px; position: relative; line-height: 1.6; }
+  .items li::before { content: '—'; position: absolute; left: 0; color: #bbb; }
+  .items li strong { color: #111; font-weight: 600; }
+  .items li code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 11px; font-family: 'Menlo', 'Consolas', monospace; }
+  .connector { height: 16px; display: flex; align-items: center; justify-content: center; }
+  .connector::after { content: ''; width: 2px; height: 100%; background: #ddd; display: block; }
+</style>
+</head>
+<body>
+
+<h1>Argus Autonomous — Development Roadmap</h1>
+<p class="subtitle">4-cable spidercam, ESP32 + 4× DRV8825, 200 × 200 × 94 cm working volume</p>
+<p class="meta">Generated 2026-05-20 &nbsp;|&nbsp; Folder: argus_autonomous/ &nbsp;|&nbsp; One .ino file per version</p>
+
+<div class="note">⚠️ Inspection pass is <strong>2D only — fixed Z, XY serpentine sweep.</strong> No vertical movement during inspection.</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> New feature</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> Builds on previous</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Test checkpoint</div>
+</div>
+
+<div class="phases">
+
+  <!-- V1 -->
+  <div class="phase active" style="--accent:#3b82f6;--accent-light:#eff6ff;" onclick="toggle(this)">
+    <div class="phase-header">
+      <div class="badge">1</div>
+      <div class="phase-title">Foundation — E-Stop + Homing + Go to Start</div>
+      <div class="phase-file">v1_foundation.ino</div>
+      <div class="phase-arrow">▶</div>
+    </div>
+    <div class="phase-body">
+      <div class="tag-row">
+        <span class="tag tag-new">New</span>
+        <span class="tag tag-test">Test before continuing</span>
+      </div>
+      <ul class="items">
+        <li><strong>WiFi AP</strong> with fixed IP <code>192.168.4.1</code> — connect to "SpiderCam" network, open browser, done</li>
+        <li><strong>Physical E-stop</strong> on a GPIO (NC switch — cuts motor ENABLE line at hardware level)</li>
+        <li><strong>Software E-stop</strong> always visible at top of UI — red, full-width, impossible to miss</li>
+        <li><strong>Z-level switch</strong> on GPIO 33 (NO contact) — when triggered, records position as (100, 100, 94)</li>
+        <li><strong>"Go to Start"</strong> button — moves unit to (5, 5, fixed Z) near M1; only enabled after homing</li>
+        <li>Status bar showing current state in plain text</li>
+        <li>Serial debug output for all state changes and step counts</li>
+        <li><strong>✓ Test:</strong> trigger Z switch → press Go to Start → unit arrives at M1 corner; both E-stops cut motion immediately</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- V2 -->
+  <div class="phase" style="--accent:#8b5cf6;--accent-light:#f5f3ff;" onclick="toggle(this)">
+    <div class="phase-header">
+      <div class="badge" style="background:#8b5cf6">2</div>
+      <div class="phase-title">Manual Jog + Cable Length Verification</div>
+      <div class="phase-file">v2_manual_jog.ino</div>
+      <div class="phase-arrow">▶</div>
+    </div>
+    <div class="phase-body">
+      <div class="tag-row">
+        <span class="tag tag-build">Builds on v1</span>
+        <span class="tag tag-test">Test before continuing</span>
+      </div>
+      <ul class="items">
+        <li><strong>Jog buttons</strong> — ±X, ±Y only (Z is fixed); step size 5 / 10 / 20 cm selectable in UI</li>
+        <li><strong>XYZ coordinate display</strong> — numeric readout updated after each jog</li>
+        <li><strong>Cable length display</strong> — shows calculated L1–L4 in cm; physically measure with a tape and compare</li>
+        <li>Jog disabled during movement and when E-stop is active</li>
+        <li><strong>✓ Test:</strong> jog to several known XY positions, measure all 4 cables, verify geometry math matches physical reality</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- V3 -->
+  <div class="phase" style="--accent:#06b6d4;--accent-light:#ecfeff;" onclick="toggle(this)">
+    <div class="phase-header">
+      <div class="badge" style="background:#06b6d4">3</div>
+      <div class="phase-title">Real-Time Position Visualisation</div>
+      <div class="phase-file">v3_visualisation.ino</div>
+      <div class="phase-arrow">▶</div>
+    </div>
+    <div class="phase-body">
+      <div class="tag-row">
+        <span class="tag tag-build">Builds on v2</span>
+        <span class="tag tag-test">Test before continuing</span>
+      </div>
+      <ul class="items">
+        <li><strong>WebSocket streaming</strong> — ESP32 pushes XY position JSON every 50 ms during movement</li>
+        <li><strong>Top-down SVG map</strong> — 200×200 cm frame, M1–M4 corner labels, live position dot</li>
+        <li>Non-blocking move loop — web server and WebSocket stay responsive while motors are running</li>
+        <li><strong>✓ Test:</strong> jog the unit while watching the map — dot should track smoothly with no freezing or lag</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- V4 -->
+  <div class="phase" style="--accent:#22c55e;--accent-light:#f0fdf4;" onclick="toggle(this)">
+    <div class="phase-header">
+      <div class="badge" style="background:#22c55e">4</div>
+      <div class="phase-title">Full Autonomous Inspection — Fixed Z Sweep</div>
+      <div class="phase-file">v4_autonomous.ino</div>
+      <div class="phase-arrow">▶</div>
+    </div>
+    <div class="phase-body">
+      <div class="tag-row">
+        <span class="tag tag-build">Builds on v3</span>
+        <span class="tag tag-final">Final target</span>
+      </div>
+      <ul class="items">
+        <li><strong>Z is fixed</strong> — unit stays at the Z height it arrived at after "Go to Start"; no vertical movement during inspection</li>
+        <li><strong>Serpentine XY sweep</strong> — covers full 200×200 cm plane, 40 cm grid spacing, direction reverses each row to minimise travel</li>
+        <li><strong>"Start Inspection"</strong> button — only active after arriving at start position; triggers the full sweep automatically</li>
+        <li><strong>Waypoint counter</strong> — "Waypoint 4 / 36" shown in UI; dot traces the path on the live map</li>
+        <li><strong>Pause / Resume</strong> — halts after finishing current segment, resumes from the same point</li>
+        <li><strong>Return to Start</strong> automatically on completion or E-stop trigger</li>
+        <li><strong>✓ Complete:</strong> full 200×200 cm area covered autonomously at fixed height from a single button press</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggle(el) {
+  const wasActive = el.classList.contains('active');
+  document.querySelectorAll('.phase').forEach(p => p.classList.remove('active'));
+  if (!wasActive) el.classList.add('active');
+}
+</script>
+</body>
+</html>

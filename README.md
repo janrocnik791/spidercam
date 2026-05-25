@@ -9,9 +9,12 @@ The thermal camera is a **FLIR One Pro** (USB-C). On the Pi, a libusb C driver
 demuxes its proprietary dual stream into standard `v4l2loopback` devices, and a
 Flask/SocketIO app reads those devices and serves the **Argus** operator UI.
 
-> **Status (May 2026):** thermal feed is working. Visual (optical) feed is in
-> progress. The Argus backend (motor control, inspection runs, leak detection,
-> live data wiring) is **not yet implemented** — see [Current status](#current-status).
+> **Status (May 2026):** both the thermal and visual feeds stream live into the
+> Argus UI, and the Argus backend is **implemented and working** — live SocketIO
+> data wiring, inspection runs, the comparator / leak detector, and the Pi → ESP32
+> command link are all in place. It currently runs on a **simulated (time-based)
+> scan**; wiring the real gantry motion is what remains — see
+> [Current status](#current-status).
 
 ---
 
@@ -94,7 +97,7 @@ spidercam/
 │       │   ├── comparator.py     # baseline-vs-current diff             (STUB)
 │       │   ├── leak_detector.py  # thresholding / alerts                (STUB)
 │       │   └── noise_filter.py   # smoothing                            (STUB)
-│       └── static/               # Argus front-end (React via Babel, runs on demo data)
+│       └── static/               # Argus front-end (React via Babel, fed live over SocketIO)
 │           ├── Argus.html         # entry point — open this to see the UI
 │           ├── Argus Spec.txt     # functional spec / contract for backend wiring
 │           ├── shared.jsx, v6-argus.jsx, v6-data.jsx, v6-history-detail.jsx
@@ -145,11 +148,11 @@ bash setup/install.sh        # installs deps, builds the driver, sets up udev + 
 
 ### 2. `app/` — the Argus backend + operator UI
 
-`pi/app/` is a Flask + SocketIO application intended to be the production
-operator interface: it serves the **Argus** front-end (`app/static/`) and will
-expose the live camera feed, motor control, inspection runs, and leak-detection
-results. The front-end design is complete and runs on demo data; **the backend
-that feeds it real data is mostly stubs today** (see [Current status](#current-status)).
+`pi/app/` is a Flask + SocketIO application — the production operator interface.
+It serves the **Argus** front-end (`app/static/`) and exposes the live camera
+feeds, motor control, inspection runs, and leak-detection results. The pipeline
+is **implemented and feeds the UI live over SocketIO**; it currently runs on a
+simulated (time-based) scan (see [Current status](#current-status)).
 
 ---
 
@@ -182,6 +185,33 @@ HTTP API (port 80):
 
 Build/flash with PlatformIO (`esp32dev` env). Set your Wi-Fi credentials in
 `esp32/src/config.h`.
+
+---
+
+## ESP32 connection — `command_test` sketch
+
+`esp32/src/command_test/` is a small **diagnostic** sketch (separate from the
+motor firmware above) for verifying the Pi → ESP32 command link. It connects to
+Wi-Fi, runs an HTTP server on port 80, and prints every command it receives to
+Serial at **115200 baud** (`/ping` is silent so it doesn't flood the monitor).
+
+Compile and flash it from the Pi with `arduino-cli` (needs the `esp32:esp32`
+core installed; on this Pi the binary is at `bin/arduino-cli`):
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32 esp32/src/command_test
+arduino-cli upload  --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 esp32/src/command_test
+arduino-cli monitor --port /dev/ttyUSB0 --config baudrate=115200   # watch the [CMD] lines
+```
+
+**Network:** the sketch pins a static IP **`192.168.85.85`** (gateway
+`192.168.85.1`) and advertises mDNS as **`spidercam.local`**, so the Pi reaches
+it at **`http://spidercam.local`** — matching `ESP32_IP` in `pi/app/config.py` —
+with the static IP as the fallback when mDNS multicast isn't available.
+
+**Wi-Fi credentials** live in `esp32/src/command_test/secrets.h`, which is
+**gitignored** (never committed); the sketch `#include`s it for `WIFI_SSID` /
+`WIFI_PASS`. Create your own `secrets.h` there to build.
 
 ---
 
@@ -233,16 +263,35 @@ python -m app.main          # serves Flask + SocketIO on :5000
 | Thermal MJPEG feed at `:5000` | ✅ working |
 | Visual / optical feed | ✅ live — streaming into the Argus UI in the browser via MJPEG |
 | ESP32 firmware (cable kinematics + HTTP API) | ✅ implemented |
-| Argus front-end (layout, components) | ✅ built — **both video feeds (thermal + visible) confirmed live in the interface**; remaining panels still run on **demo data** (`v6-data.jsx`) |
-| Argus served + live-data wiring (SocketIO) | ❌ not yet implemented |
+| ESP32 firmware — `command_test` sketch | ✅ Implemented — HTTP server on port 80, handles `/start_inspection`, `/pause`, `/resume`, `/estop`, `/release`, `/abort`, `/ping`, `/position`, `/status`; prints all received commands to Serial at 115200 baud |
+| ESP32 — network | ✅ Configured — static IP 192.168.85.85, gateway 192.168.85.1, mDNS hostname `spidercam.local`; reachable from the Pi via `http://spidercam.local` |
+| Argus front-end (layout, components) | ✅ built — both video feeds **and the data panels are live**: detections, coverage / scan progress, head position and system status all arrive over SocketIO (`v6-data.jsx`'s `DETECTIONS` is now empty — it holds only the static priority/status colour maps) |
+| Argus served + live-data wiring (SocketIO) | ✅ implemented — Flask serves `Argus.html`; `events.py` pushes `position_update`, `frame_stats`, `scan_progress`, `status_update` and `new_detection` / `detection_updated`, and the control events (start / pause / resume / stop / abort / estop) drive both the scan state and the ESP32 |
 | `app/routes/camera.py` | ✅ implemented — serves the live FLIR thermal + visible feeds as MJPEG (`/api/camera/thermal`, `/api/camera/optical`) that the Argus UI renders in the browser |
-| `app/routes/control.py`, `inspection.py`, `results.py` | ❌ blueprints only, no endpoints |
-| `app/services/esp_client.py` | ⚠️ only `ping()` — `move/stop/position/status` not implemented |
+| `app/routes/control.py`, `inspection.py`, `results.py` | ✅ implemented — control (`/move`, `/stop`, `/goto_home`, `/speed`, `/ping`), inspection (`/start`, `/pause`, `/resume`, `/stop`, `/estop`, `/release`, `/status`) and results (detections list / get / status patch + saved frame images) |
+| Pi — `esp_client.py` | ✅ Updated — added `start_inspection()`, `pause()`, `resume()`, `abort()` and `release()` methods (`estop()` now fire-and-forget too); all calls catch `ESP32Unreachable` and degrade gracefully |
+| Pi — `events.py` | ✅ Updated — `pause_scan`, `resume_scan`, `abort_scan`, `estop` and `release_estop` SocketIO events all fire the corresponding ESP32 HTTP calls; `start_scan` calls both `_start_runner()` and `esp_client.start_inspection()` |
+| Pi — `config.py` | ✅ Updated — `ESP32_IP` → `spidercam.local` (mDNS), so `ESP32_BASE_URL` resolves to `http://spidercam.local` |
 | `app/services/camera_flir.py` | ✅ implemented — reads the FLIR v4l2 devices (`/dev/video1` thermal, `/dev/video2` visible) and streams **both feeds as live MJPEG into the Argus UI in the browser**, not just on the backend |
-| `app/services/inspection_runner.py` | ✅ implemented — captures the Y8 thermal frame at 1 fps to `data/inspections/{ts}/{x}_{y}.jpg`, compares each frame live, and repoints the `baselines/latest` symlink to the new pass on completion |
+| `app/services/inspection_runner.py` | ✅ implemented — captures the Y8 thermal frame per scan cell to `data/inspections/{ts}/{x}_{y}.jpg`, compares each frame live, and refreshes `baselines/latest` (a clean copy of the pass) on completion; cell positions come from the simulated scan, not yet the real gantry |
 | `app/detection/*` (comparator, leak_detector, noise_filter) | ✅ implemented — SIFT-aligned `absdiff` comparison (`compare_frames`/`compare_pass`), contour-based `LeakAlert` detection with per-pass Manhattan-distance zone dedup, and a Gaussian noise filter |
 
-**Next steps** are roughly: implement `camera_flir.py` to read `/dev/video1`,
-point `routes/camera.py` at it, flesh out `esp_client.py` against the ESP32's
-X/Y/Z API, serve `Argus.html` from Flask, and replace the front-end's demo data
-with live SocketIO events (the contract is in `app/static/Argus Spec.txt`).
+**What's left.** The camera → detection → Argus pipeline is complete and runs
+live: `camera_flir.py` feeds `routes/camera.py`, the comparator / leak detector
+flags anomalies, `esp_client.py` drives the ESP32, Flask serves `Argus.html`, and
+the UI is fed entirely by live SocketIO events (the contract is in
+`app/static/Argus Spec.txt`). The remaining work is the **real-motion** layer:
+
+- **Drive the scan with the real gantry.** `ScanState` (`services/runtime.py`)
+  still advances progress/position on a time clock, and `inspection_runner` keys
+  captured frames to those simulated cells. Hook it to the real path planner /
+  gantry so the pass follows actual head motion and frames are named by the real
+  (x, y).
+- **Unify the ESP32 firmware.** The inspection-control endpoints
+  (`/start_inspection`, `/pause`, `/resume`, `/abort`, `/estop`, `/release`) exist
+  only in the `command_test` diagnostic sketch; the production firmware
+  (`spidercam_esp32_4_stepper.ino`) exposes an X/Y/Z move API instead. Add these
+  controls there (or have the Pi drive `/move` from the path planner) so commands
+  move real cables.
+- **Optional: true temperatures.** Expose the FLIR driver's raw16 temps for
+  calibrated °C — today's readings are an approximation (see `config.py`).

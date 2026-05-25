@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Argus V1.3 — SpiderCam</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#18181b;color:#f4f4f5;padding:16px;max-width:500px;margin:0 auto}
+h1{font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+#st{font-size:12px;color:#a1a1aa;margin-bottom:12px;min-height:16px}
+
+/* IP bar */
+.ipbar{display:flex;align-items:center;gap:8px;background:#27272a;border-radius:8px;padding:10px 12px;margin-bottom:12px;flex-wrap:wrap}
+.ipbar label{font-size:11px;color:#a1a1aa;white-space:nowrap;flex-shrink:0}
+.ipbar input{flex:1;min-width:130px;background:#18181b;border:1.5px solid #52525b;border-radius:6px;color:#f4f4f5;padding:7px 10px;font-size:14px;font-family:monospace;outline:none}
+.ipbar input:focus{border-color:#2563eb}
+.ipbar button{white-space:nowrap;padding:8px 14px;font-size:12px;font-weight:700;width:auto;flex-shrink:0}
+
+/* Cards */
+.card{background:#27272a;border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.card h2{font-size:10px;font-weight:700;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+
+/* Cable length boxes */
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.cbox{background:#3f3f46;border-radius:8px;padding:10px;text-align:center}
+.clbl{font-size:10px;color:#a1a1aa;margin-bottom:3px}
+.cval{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.cunit{font-size:10px;color:#71717a}
+
+/* Buttons */
+button{display:block;padding:14px 8px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;width:100%;letter-spacing:.2px;transition:filter .1s}
+button:active{filter:brightness(.8)}
+button:disabled{background:#3f3f46!important;color:#52525b!important;cursor:not-allowed;filter:none!important}
+.pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.blue  {background:#2563eb;color:#fff}
+.green {background:#16a34a;color:#fff}
+.red   {background:#dc2626;color:#fff}
+.amber {background:#d97706;color:#fff}
+.muted {background:#3f3f46;color:#a1a1aa;font-size:11px;padding:10px 8px}
+
+/* Motor jog */
+.mrow{display:grid;grid-template-columns:36px 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px}
+.mrow:last-child{margin-bottom:0}
+.mlbl{font-size:13px;font-weight:700;color:#71717a;text-align:center}
+.rrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.rrow label{font-size:12px;color:#a1a1aa;white-space:nowrap}
+.rrow input{flex:1;background:#3f3f46;border:1.5px solid #52525b;border-radius:6px;color:#f4f4f5;padding:8px 10px;font-size:16px;text-align:center;outline:none;width:0}
+
+/* Settings */
+.srow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.srow:last-child{margin-bottom:0}
+.srow label{font-size:12px;color:#a1a1aa;min-width:72px;flex-shrink:0}
+.srow input{flex:1;background:#3f3f46;border:1.5px solid #52525b;border-radius:6px;color:#f4f4f5;padding:8px 10px;font-size:14px;outline:none;width:0}
+.srow button{width:56px;padding:8px;flex-shrink:0;font-size:12px}
+.calinfo{font-size:11px;color:#52525b;margin-top:8px;text-align:center}
+
+/* Auto-pass */
+.passSeq{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:28px;margin-bottom:8px;padding:6px 8px;background:#18181b;border-radius:7px}
+.chip{background:#3f3f46;border-radius:5px;padding:3px 8px;font-size:12px;font-weight:700;white-space:nowrap}
+.arr{color:#52525b;margin:0 2px;font-size:12px}
+.passCount{font-size:10px;color:#52525b;margin-bottom:8px;text-align:right}
+.passAddRow{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px}
+.passAddRow button{font-size:11px;padding:8px 4px;background:#3f3f46;color:#a1a1aa}
+.passActions{display:flex;gap:8px}
+.passActions button{flex:1;padding:12px}
+</style>
+</head>
+<body>
+
+<h1>Argus V1.3</h1>
+<div id="st">Enter the ESP IP and press Connect</div>
+
+<!-- IP configuration -->
+<div class="ipbar">
+  <label>ESP IP</label>
+  <input type="text" id="espip" placeholder="192.168.x.x" spellcheck="false"
+    autocorrect="off" autocapitalize="none"
+    onkeydown="if(event.key==='Enter')connect()">
+  <button class="blue" onclick="connect()">Connect</button>
+</div>
+
+<div class="card">
+  <h2>Current Cable Lengths</h2>
+  <div class="cgrid">
+    <div class="cbox"><div class="clbl">M1</div><div class="cval" id="v0">—</div><div class="cunit">cm</div></div>
+    <div class="cbox"><div class="clbl">M2</div><div class="cval" id="v1">—</div><div class="cunit">cm</div></div>
+    <div class="cbox"><div class="clbl">M3</div><div class="cval" id="v2">—</div><div class="cunit">cm</div></div>
+    <div class="cbox"><div class="clbl">M4</div><div class="cval" id="v3">—</div><div class="cunit">cm</div></div>
+  </div>
+  <button class="muted" onclick="anchor()">Anchor — declare I am physically at HOME</button>
+</div>
+
+<div class="card">
+  <h2>Go to Position</h2>
+  <div class="pgrid">
+    <button class="blue" onclick="go('home')">Home</button>
+    <button class="blue" onclick="go('c1')">C1</button>
+    <button class="blue" onclick="go('c2')">C2</button>
+    <button class="blue" onclick="go('c3')">C3</button>
+    <button class="blue" onclick="go('c4')">C4</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Motor Jog</h2>
+  <div class="rrow">
+    <label>Rotations</label>
+    <input type="number" id="rot" value="0.5" step="0.25" min="0.25" max="20">
+  </div>
+  <div class="mrow"><span class="mlbl">M1</span><button class="green" onclick="jog(0,1)">&#8593; Wind</button><button class="red" onclick="jog(0,-1)">&#8595; Unwind</button></div>
+  <div class="mrow"><span class="mlbl">M2</span><button class="green" onclick="jog(1,1)">&#8593; Wind</button><button class="red" onclick="jog(1,-1)">&#8595; Unwind</button></div>
+  <div class="mrow"><span class="mlbl">M3</span><button class="green" onclick="jog(2,1)">&#8593; Wind</button><button class="red" onclick="jog(2,-1)">&#8595; Unwind</button></div>
+  <div class="mrow"><span class="mlbl">M4</span><button class="green" onclick="jog(3,1)">&#8593; Wind</button><button class="red" onclick="jog(3,-1)">&#8595; Unwind</button></div>
+</div>
+
+<div class="card">
+  <h2>Record Position — jog to spot first, then save</h2>
+  <div class="pgrid">
+    <button class="amber" onclick="setpos('home')">Home</button>
+    <button class="amber" onclick="setpos('c1')">C1</button>
+    <button class="amber" onclick="setpos('c2')">C2</button>
+    <button class="amber" onclick="setpos('c3')">C3</button>
+    <button class="amber" onclick="setpos('c4')">C4</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Auto Pass</h2>
+  <div class="passSeq" id="passSeq"><span style="color:#52525b">Empty</span></div>
+  <div class="passCount" id="passCount">0 / 20 steps</div>
+  <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Add step to pass</div>
+  <div class="passAddRow">
+    <button onclick="passAdd('home')">Home</button>
+    <button onclick="passAdd('c1')">C1</button>
+    <button onclick="passAdd('c2')">C2</button>
+    <button onclick="passAdd('c3')">C3</button>
+    <button onclick="passAdd('c4')">C4</button>
+  </div>
+  <div class="passActions">
+    <button class="red"   onclick="passClear()">Clear</button>
+    <button class="green" onclick="passRun()">&#9654; Run Pass</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Settings</h2>
+  <div class="srow">
+    <label>Speed (µs)</label>
+    <input type="number" id="spd" step="100" min="500" max="20000">
+    <button class="blue" onclick="applySpeed()">Set</button>
+  </div>
+  <div class="srow">
+    <label>cm / rot</label>
+    <input type="number" id="cpr" step="0.1" min="1">
+    <button class="blue" onclick="applyCpr()">Set</button>
+  </div>
+  <div class="calinfo" id="cal"></div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+var busy = false;
+var BASE = ''; // e.g. "http://192.168.43.47" — set by connect()
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function setStatus(t) { document.getElementById('st').textContent = t; }
+
+function setAllDisabled(d) {
+  document.querySelectorAll('button').forEach(function(b) {
+    // Keep the Connect button always usable
+    if (b.textContent === 'Connect') return;
+    b.disabled = d;
+  });
+}
+
+function update(data) {
+  for (var i = 0; i < 4; i++)
+    document.getElementById('v' + i).textContent = data.current[i].toFixed(1);
+  document.getElementById('spd').value = data.go_us;
+  document.getElementById('cpr').value = data.cpr.toFixed(2);
+  document.getElementById('cal').textContent =
+    data.cpr.toFixed(2) + ' cm/rot  →  ' + data.spc.toFixed(4) + ' steps/cm';
+}
+
+function renderPass(data) {
+  var chips = data.pass.map(function(p) {
+    return '<span class="chip">' + p.toUpperCase() + '</span>';
+  });
+  document.getElementById('passSeq').innerHTML = chips.length
+    ? chips.join('<span class="arr">→</span>')
+    : '<span style="color:#52525b">Empty</span>';
+  document.getElementById('passCount').textContent =
+    data.len + ' / ' + data.max + ' steps';
+}
+
+// Generic POST request that returns status JSON
+function req(url, label) {
+  if (!BASE) { setStatus('Enter ESP IP and press Connect first'); return; }
+  if (busy) return;
+  busy = true;
+  setAllDisabled(true);
+  setStatus((label || 'Working') + '…');
+  fetch(BASE + url, { method: 'POST' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(d) { update(d); setStatus('Ready'); })
+    .catch(function(e) { setStatus('Error: ' + e.message + ' — check serial monitor'); })
+    .finally(function() { busy = false; setAllDisabled(false); });
+}
+
+// ─── Connection ───────────────────────────────────────────────────────────────
+function connect() {
+  var ip = document.getElementById('espip').value.trim();
+  if (!ip) { setStatus('Enter an IP address'); return; }
+  // Strip any accidental http:// prefix the user may type
+  ip = ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  BASE = 'http://' + ip;
+  localStorage.setItem('espIP', ip);
+  setStatus('Connecting to ' + BASE + '…');
+  // Fetch status + pass in parallel
+  var p1 = fetch(BASE + '/status')
+    .then(function(r) { return r.json(); })
+    .then(update);
+  var p2 = fetch(BASE + '/pass/status')
+    .then(function(r) { return r.json(); })
+    .then(renderPass);
+  Promise.all([p1, p2])
+    .then(function() { setStatus('Ready — connected to ' + ip); })
+    .catch(function() {
+      setStatus('Cannot reach ' + BASE + ' — is the ESP on the same WiFi? Check IP on serial monitor.');
+    });
+}
+
+// ─── Go / Anchor ──────────────────────────────────────────────────────────────
+function go(pos)    { req('/go?pos=' + pos, 'Moving to ' + pos.toUpperCase()); }
+function anchor()   { req('/anchor', 'Anchoring to HOME'); }
+
+// ─── Jog ──────────────────────────────────────────────────────────────────────
+function jog(m, dir) {
+  var rot = (parseFloat(document.getElementById('rot').value) || 0.5) * dir;
+  req('/jog?m=' + m + '&rot=' + rot, 'Jogging M' + (m + 1));
+}
+
+// ─── Set position ─────────────────────────────────────────────────────────────
+function setpos(pos) {
+  if (!confirm('Save current cable lengths as "' + pos + '"?\nThis overwrites the stored reference.')) return;
+  req('/setpos?pos=' + pos, 'Recording ' + pos.toUpperCase());
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function applySpeed() { req('/speed?us=' + document.getElementById('spd').value, 'Setting speed'); }
+function applyCpr()   { req('/cpr?val='  + document.getElementById('cpr').value, 'Setting calibration'); }
+
+// ─── Auto-pass ────────────────────────────────────────────────────────────────
+function passAdd(pos) {
+  if (!BASE) { setStatus('Enter ESP IP first'); return; }
+  if (busy) return;
+  busy = true; setAllDisabled(true); setStatus('Adding ' + pos.toUpperCase() + ' to pass…');
+  fetch(BASE + '/pass/add?pos=' + pos, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { renderPass(d); setStatus('Ready'); })
+    .catch(function() { setStatus('Error'); })
+    .finally(function() { busy = false; setAllDisabled(false); });
+}
+
+function passClear() {
+  if (!BASE) { setStatus('Enter ESP IP first'); return; }
+  if (busy) return;
+  busy = true; setAllDisabled(true); setStatus('Clearing pass…');
+  fetch(BASE + '/pass/clear', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { renderPass(d); setStatus('Ready'); })
+    .catch(function() { setStatus('Error'); })
+    .finally(function() { busy = false; setAllDisabled(false); });
+}
+
+function passRun() {
+  if (!BASE) { setStatus('Enter ESP IP first'); return; }
+  if (busy) return;
+  busy = true; setAllDisabled(true); setStatus('Running pass — motors are moving…');
+  fetch(BASE + '/pass/run', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      // ESP responds immediately then runs motors in background.
+      // Poll /status every 2 s until the ESP answers (it can't while moving).
+      setStatus('Pass executing — waiting for motors to finish…');
+      function poll(n) {
+        fetch(BASE + '/status')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            update(d);
+            setStatus('Pass complete ✓');
+            busy = false; setAllDisabled(false);
+          })
+          .catch(function() {
+            if (n > 0) {
+              setTimeout(function() { poll(n - 1); }, 2000);
+            } else {
+              setStatus('Motors done — press any button to refresh status');
+              busy = false; setAllDisabled(false);
+            }
+          });
+      }
+      setTimeout(function() { poll(20); }, 1500); // up to 20×2 = 40 s
+    })
+    .catch(function() {
+      setStatus('Error — check serial monitor');
+      busy = false; setAllDisabled(false);
+    });
+}
+
+// ─── On load: restore saved IP ────────────────────────────────────────────────
+(function() {
+  var saved = localStorage.getItem('espIP');
+  if (saved) {
+    document.getElementById('espip').value = saved;
+    // Auto-connect quietly
+    BASE = 'http://' + saved;
+    setStatus('Reconnecting to ' + saved + '…');
+    var p1 = fetch(BASE + '/status').then(function(r) { return r.json(); }).then(update);
+    var p2 = fetch(BASE + '/pass/status').then(function(r) { return r.json(); }).then(renderPass);
+    Promise.all([p1, p2])
+      .then(function() { setStatus('Ready — connected to ' + saved); })
+      .catch(function() { setStatus('Cannot reach ' + saved + ' — enter IP and press Connect'); });
+  }
+})();
+</script>
+</body>
+</html>

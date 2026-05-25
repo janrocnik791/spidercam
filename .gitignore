@@ -1,0 +1,3 @@
+# WiFi credentials / secrets — never commit
+secrets.h
+esp32/src/command_test/secrets.h

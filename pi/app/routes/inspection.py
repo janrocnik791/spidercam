@@ -22,7 +22,6 @@ from flask import Blueprint, jsonify
 
 from app import socketio, config
 from app.services import runtime
-from app.services.esp_client import ESP32Unreachable
 from app.services.inspection_runner import InspectionRunner
 from app.detection import leak_detector
 from app.detection.comparator import compare_pass
@@ -51,6 +50,7 @@ def resume():
 def stop():
     snap = runtime.scan.stop()
     _stop_runner()
+    runtime.esp.abort()               # fire-and-forget: stop controller motion
     socketio.emit("scan_complete", {})
     return jsonify(snap)
 
@@ -59,11 +59,7 @@ def stop():
 def estop():
     snap = runtime.scan.estop()
     _stop_runner()
-    esp_ok = True
-    try:
-        runtime.esp.estop()
-    except ESP32Unreachable:
-        esp_ok = False
+    esp_ok = runtime.esp.estop()      # fire-and-forget; True iff the cmd reached the ESP32
     socketio.emit("estop_triggered", {})
     return jsonify({**snap, "esp32": esp_ok})
 
@@ -71,7 +67,9 @@ def estop():
 @inspection_bp.route("/release", methods=["POST"])
 def release():
     # Release E-stop → PAUSED (autonomous does not auto-resume; §7).
-    return jsonify(runtime.scan.release_estop())
+    snap = runtime.scan.release_estop()
+    runtime.esp.release()             # fire-and-forget: clear the controller's latch
+    return jsonify(snap)
 
 
 @inspection_bp.route("/status", methods=["GET"])

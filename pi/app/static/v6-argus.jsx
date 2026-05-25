@@ -1179,6 +1179,12 @@ function V6AlarmModal({ detection, onAcknowledge, onSwitchManual }) {
   );
 }
 
+// Pass readouts zeroed when no scan is active — applied on abort and whenever an
+// idle scan_progress arrives, so the coverage map, swept %, ETA and elapsed all
+// drop to empty (identical to a fresh start) instead of lingering at the value
+// the pass was aborted at.
+const SCAN_CLEARED = { progress: 0, elapsed_seconds: 0, eta_seconds: 0, current_pass: 0, current_cell: 0 };
+
 // ─── Root ─────────────────────────────────────────────────────────────
 function V6Argus() {
   const [activeTab, setActiveTab] = React.useState('inspection');
@@ -1231,7 +1237,13 @@ function V6Argus() {
 
     s.on('position_update', (data) => setPosition(data));
     s.on('frame_stats', (data) => setTemp(data));
-    s.on('scan_progress', (data) => setScan(data));
+    s.on('scan_progress', (data) => setScan(
+      // Idle = no active pass. The backend keeps the last progress in its
+      // snapshot and re-pushes it every second, so zero the pass readouts here —
+      // otherwise an aborted scan's coverage %/ETA would be restored right after
+      // the reset below.
+      data.mode === 'idle' ? { ...data, ...SCAN_CLEARED } : data
+    ));
     s.on('status_update', (data) => setStatus(data));
 
     s.on('new_detection', (detection) => {
@@ -1250,7 +1262,10 @@ function V6Argus() {
     });
 
     s.on('scan_complete', () => {
-      setScan(prev => ({ ...prev, mode: 'idle', progress: 1 }));
+      // Emitted only on explicit stop/abort (never on a natural 100% finish), so
+      // clear the coverage map, swept %, ETA and elapsed back to zero the moment
+      // the abort is processed — identical to what Start Inspection resets to.
+      setScan(prev => ({ ...prev, mode: 'idle', ...SCAN_CLEARED }));
     });
 
     return () => s.disconnect();
@@ -1295,9 +1310,11 @@ function V6Argus() {
   const onAcknowledge = () => {
     if (alarm) api.acknowledge(alarm.id, 'acknowledge');
     setAlarm(null);
-    // Resume autonomous unless the operator is in manual or the system is
-    // e-stopped (FLOW 2 / FLOW 6 / §7).
-    if (!isManual && !estopped) api.resumeScan();
+    // Only resume when there is genuinely a paused scan to pick back up (FLOW 2:
+    // an alarm raised mid-pass). A completed/idle scan has nothing to resume —
+    // acknowledging just closes the modal and leaves the UI in COMPLETE/IDLE
+    // showing START INSPECTION, with no phantom progress animation.
+    if (!isManual && scan.mode === 'paused') api.resumeScan();
   };
   const onSwitchManual = () => {
     if (alarm) api.acknowledge(alarm.id, 'acknowledge');

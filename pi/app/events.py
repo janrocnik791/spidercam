@@ -76,26 +76,47 @@ def _on_start_scan(_data=None):
     from app.routes.inspection import _start_runner   # lazy: avoid import cycle
     snap = runtime.scan.start()
     _start_runner()
+    runtime.esp.start_inspection()       # fire-and-forget: tell the controller to scan
     socketio.emit("scan_progress", _scan_progress_payload(snap))
 
 
 @socketio.on("pause_scan")
 def _on_pause_scan(_data=None):
-    socketio.emit("scan_progress", _scan_progress_payload(runtime.scan.pause()))
+    snap = runtime.scan.pause()
+    runtime.esp.pause()                  # fire-and-forget: pause the controller too
+    socketio.emit("scan_progress", _scan_progress_payload(snap))
 
 
 @socketio.on("resume_scan")
 def _on_resume_scan(_data=None):
-    socketio.emit("scan_progress", _scan_progress_payload(runtime.scan.resume()))
+    snap = runtime.scan.resume()
+    runtime.esp.resume()                 # fire-and-forget
+    socketio.emit("scan_progress", _scan_progress_payload(snap))
 
 
 @socketio.on("stop_scan")
 def _on_stop_scan(_data=None):
+    # The inspection panel's stop button emits this. Halt the pass on the Pi AND
+    # tell the controller to abort its motion — without this the ESP32 never
+    # hears the stop (the bug: stop_scan used to update only Pi-side state).
     from app.routes.inspection import _stop_runner   # lazy: avoid import cycle
     runtime.scan.stop()
     _stop_runner()                       # end the pass → batch compare + persist
+    runtime.esp.abort()                  # fire-and-forget: stop controller motion
     socketio.emit("scan_complete", {})
     socketio.emit("scan_progress", _scan_progress_payload())
+
+
+@socketio.on("abort_scan")
+def _on_abort_scan(_data=None):
+    # Abort cancels the current pass: halt capture, drop the scan back to idle,
+    # and tell the controller to abort. Fire-and-forget on the ESP32 side.
+    from app.routes.inspection import _stop_runner   # lazy: avoid import cycle
+    snap = runtime.scan.stop()
+    _stop_runner()
+    runtime.esp.abort()                  # fire-and-forget
+    socketio.emit("scan_complete", {})
+    socketio.emit("scan_progress", _scan_progress_payload(snap))
 
 
 @socketio.on("estop")
@@ -103,10 +124,7 @@ def _on_estop(_data=None):
     from app.routes.inspection import _stop_runner   # lazy: avoid import cycle
     runtime.scan.estop()
     _stop_runner()                       # halt the capture loop on abort
-    try:
-        runtime.esp.estop()
-    except ESP32Unreachable:
-        pass
+    runtime.esp.estop()                  # fire-and-forget: hard-halt the controller
     socketio.emit("estop_triggered", {})
     socketio.emit("scan_progress", _scan_progress_payload())
 
@@ -116,6 +134,7 @@ def _on_release_estop(_data=None):
     # E-stop released → PAUSED. Per Argus Spec §7 autonomous must NOT
     # auto-resume; the operator presses RESUME afterwards.
     runtime.scan.release_estop()
+    runtime.esp.release()                # fire-and-forget: clear the controller's latch
     socketio.emit("scan_progress", _scan_progress_payload())
 
 
