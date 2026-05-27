@@ -1,3 +1,7 @@
 # WiFi credentials / secrets — never commit
 secrets.h
 esp32/src/command_test/secrets.h
+
+# Runtime waypoint data written by waypoint_server.py (per-deployment, not source)
+esp32/src/path_marker/waypoints.txt
+nohup.out
